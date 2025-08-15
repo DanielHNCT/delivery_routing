@@ -140,9 +140,11 @@ Limpia datos antiguos para mantenimiento.
 ### Para Choferes (App Móvil)
 - Ver tournée del día
 - Escanear paquetes
-- Registrar entregas/fallos
+- Registrar entregas/fallos con coordenadas GPS
 - Agregar datos de campo (códigos de puerta, etc.)
 - Reportar daños de vehículo
+- Tracking de ubicación en tiempo real
+- Gestión de horarios de turno
 
 ### Para Administradores
 - Dashboard de empresa
@@ -156,6 +158,9 @@ Limpia datos antiguos para mantenimiento.
 - Cálculos automáticos de performance
 - Sistema de notificaciones
 - Optimización de rutas
+- Análisis de condiciones de tráfico y clima
+- Tracking GPS en tiempo real
+- Push notifications para choferes
 
 ## 🔧 Mantenimiento
 
@@ -178,17 +183,33 @@ SELECT * FROM weekly_analytics_summary
 WHERE week_start_date = DATE_TRUNC('week', CURRENT_DATE)::DATE;
 ```
 
-## 📈 Escalabilidad
+## 📈 Escalabilidad y Performance
 
 ### Multi-Tenant
 - Aislamiento completo por empresa
-- Índices optimizados para consultas multi-tenant
+- Índices compuestos optimizados para consultas multi-tenant
 - Políticas RLS eficientes
 
 ### Performance
-- Índices en todas las claves de búsqueda
-- Views materializadas para reportes complejos
-- Triggers optimizados para cálculos automáticos
+- **Índices compuestos multi-tenant**:
+  - `(company_id, tournee_date, driver_id)` en tournees
+  - `(company_id, delivery_status, delivery_date)` en packages
+  - `(company_id, document_status, expiry_date)` en vehicle_documents
+
+- **Particionamiento por fecha**:
+  - Tabla `performance_analytics` particionada por mes
+  - Mejora significativa en queries de reportes históricos
+  - Gestión automática de particiones
+
+- **Materialized Views**:
+  - `monthly_company_summary`: Estadísticas mensuales por empresa
+  - `driver_ranking_monthly`: Rankings de performance mensual
+  - `company_cost_analysis`: Análisis de costos por empresa
+
+- **Funciones de mantenimiento automático**:
+  - Cleanup de datos antiguos (6+ meses)
+  - Gestión automática de particiones
+  - Refresh automático de materialized views
 
 ## 🚨 Sistema de Alertas
 
@@ -200,6 +221,28 @@ WHERE week_start_date = DATE_TRUNC('week', CURRENT_DATE)::DATE;
 ### Importante
 - Los vehículos siguen operando normalmente independientemente del status de documentos
 - Sistema de alertas sin bloqueos operativos
+
+## 📱 Nuevos Campos para Funcionalidades Avanzadas
+
+### Tabla PACKAGES
+- **`signature_photo`**: Fotos de firma de entrega para evidencia
+- **`delivery_coordinates`**: Ubicación exacta de entrega (PostGIS POINT)
+- **`delivery_duration_minutes`**: Tiempo de entrega para análisis de eficiencia
+
+### Tabla TOURNEES
+- **`route_coordinates`**: Array de coordenadas de la ruta completa
+- **`traffic_conditions`**: Condiciones de tráfico del día (JSONB)
+- **`weather_conditions`**: Condiciones meteorológicas (JSONB)
+
+### Tabla USERS (Drivers)
+- **`device_token`**: Token para push notifications
+- **`last_location`**: Última ubicación conocida del chofer (PostGIS POINT)
+- **`shift_start_time` / `shift_end_time`**: Horarios de trabajo
+
+### Índices Optimizados
+- Índices GIST para campos geográficos (PostGIS)
+- Índices GIN para campos JSONB
+- Índices compuestos para consultas de performance
 
 ## 🔄 Sincronización
 
@@ -216,9 +259,140 @@ WHERE week_start_date = DATE_TRUNC('week', CURRENT_DATE)::DATE;
 4. **Monitoreo**: Implementar alertas de performance
 5. **Backup**: Configurar respaldos automáticos
 
+## 🚀 Optimizaciones de Performance Implementadas
+
+### Índices Compuestos Multi-Tenant
+```sql
+-- Tournees
+CREATE INDEX idx_tournees_company_date_driver ON tournees(company_id, tournee_date, driver_id);
+CREATE INDEX idx_tournees_company_status_date ON tournees(company_id, tournee_status, tournee_date);
+
+-- Packages
+CREATE INDEX idx_packages_company_status_date ON packages(company_id, delivery_status, delivery_date);
+CREATE INDEX idx_packages_company_tournee_date ON packages(company_id, tournee_id, delivery_date);
+
+-- Vehicle Documents
+CREATE INDEX idx_vehicle_documents_company_status_expiry ON vehicle_documents(company_id, document_status, expiry_date);
+```
+
+### Particionamiento por Mes
+```sql
+-- Tabla performance_analytics particionada por mes
+CREATE TABLE performance_analytics (
+    -- ... campos ...
+) PARTITION BY RANGE (week_start_date);
+
+-- Particiones automáticas para 2024-2025
+CREATE TABLE performance_analytics_2024_01 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+-- ... más particiones ...
+```
+
+### Materialized Views para Reportes
+```sql
+-- Resumen mensual por empresa
+SELECT * FROM monthly_company_summary WHERE company_id = $1;
+
+-- Ranking mensual de choferes
+SELECT * FROM driver_ranking_monthly WHERE company_id = $1;
+
+-- Análisis de costos mensual
+SELECT * FROM company_cost_analysis WHERE company_id = $1;
+```
+
+### Funciones de Mantenimiento Automático
+```sql
+-- Refrescar todas las materialized views
+SELECT refresh_all_materialized_views();
+
+-- Gestionar particiones automáticamente
+SELECT manage_performance_partitions();
+
+-- Cleanup agresivo de datos antiguos
+SELECT * FROM aggressive_cleanup_old_data(6);
+```
+
+### Configuración de Cron Jobs Recomendada
+```bash
+# Diario a las 2:00 AM - Refresh de materialized views
+0 2 * * * psql -d delivery_routing -c "SELECT refresh_all_materialized_views();"
+
+# Mensual - Gestión de particiones
+0 3 1 * * psql -d delivery_routing -c "SELECT manage_performance_partitions();"
+
+# Semanal - Cleanup de datos antiguos
+0 4 * * 0 psql -d delivery_routing -c "SELECT * FROM aggressive_cleanup_old_data(6);"
+```
+
 ## 🆘 Soporte
 
 Para preguntas o problemas con el schema:
+
+## 🔌 Integraciones con APIs Externas
+
+### Tabla API_INTEGRATIONS
+```sql
+CREATE TABLE api_integrations (
+    integration_id UUID PRIMARY KEY,
+    company_id UUID NOT NULL,
+    provider_name VARCHAR(100) NOT NULL, -- 'colis_prive', 'chronopost'
+    api_credentials JSONB NOT NULL, -- Encriptado
+    sync_status ENUM('active', 'error', 'disabled', 'syncing'),
+    daily_sync_limit INTEGER DEFAULT 1000,
+    sync_frequency_hours INTEGER DEFAULT 24
+);
+```
+
+### Tabla SYNC_LOG
+```sql
+CREATE TABLE sync_log (
+    sync_id UUID PRIMARY KEY,
+    integration_id UUID NOT NULL,
+    sync_type VARCHAR(50), -- 'full_sync', 'incremental', 'webhook'
+    records_processed INTEGER,
+    errors_count INTEGER,
+    sync_duration_seconds INTEGER,
+    error_details JSONB
+);
+```
+
+### Funciones Principales
+```sql
+-- Marcar tournée como sincronizada desde API
+SELECT mark_tournee_as_api_synced(
+    tournee_uuid, 
+    api_integration_uuid, 
+    'external_id_123'
+);
+
+-- Marcar paquete como sincronizado desde API
+SELECT mark_package_as_api_synced(
+    package_uuid, 
+    api_integration_uuid, 
+    'external_pkg_456'
+);
+
+-- Crear nueva integración
+SELECT create_api_integration(
+    company_uuid,
+    'colis_prive',
+    'Colis Privé',
+    '{"api_key": "your_key", "secret": "your_secret"}'
+);
+```
+
+### Casos de Uso
+1. **Sincronización automática** con Colis Privé, Chronopost, etc.
+2. **Tracking de origen** para auditoría y debugging
+3. **Monitoreo de performance** de APIs externas
+4. **Gestión de credenciales** por empresa y proveedor
+5. **Webhooks** para sincronización en tiempo real
+
+### Configuración Recomendada
+- **Colis Privé**: Sincronización cada 6 horas
+- **Chronopost**: Sincronización cada 12 horas
+- **Webhooks**: Para actualizaciones en tiempo real
+- **Límites diarios**: 1000-2000 registros por proveedor
 - Revisar los comentarios en el código SQL
 - Verificar las constraints y triggers
 - Usar las views para debugging

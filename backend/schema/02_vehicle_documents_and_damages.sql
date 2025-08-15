@@ -21,6 +21,7 @@ CREATE TYPE document_status AS ENUM (
 
 CREATE TABLE vehicle_documents (
     document_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
     vehicle_id UUID NOT NULL REFERENCES vehicles(vehicle_id) ON DELETE CASCADE,
     document_type document_type NOT NULL,
     document_number VARCHAR(100),
@@ -66,6 +67,11 @@ CREATE INDEX idx_vehicle_documents_status ON vehicle_documents(document_status);
 CREATE INDEX idx_vehicle_documents_expiry_date ON vehicle_documents(expiry_date);
 CREATE INDEX idx_vehicle_documents_deleted_at ON vehicle_documents(deleted_at);
 CREATE INDEX idx_vehicle_documents_expiry_status ON vehicle_documents(expiry_date, document_status);
+
+-- Índices compuestos multi-tenant optimizados
+CREATE INDEX idx_vehicle_documents_company_status_expiry ON vehicle_documents(company_id, document_status, expiry_date);
+CREATE INDEX idx_vehicle_documents_company_type_status ON vehicle_documents(company_id, document_type, document_status);
+CREATE INDEX idx_vehicle_documents_company_vehicle_type ON vehicle_documents(company_id, vehicle_id, document_type);
 
 -- =====================================================
 -- NIVEL 3B: VEHICLE_DAMAGES (Daños causados por choferes)
@@ -197,6 +203,16 @@ CREATE TABLE tournees (
     estimated_duration_minutes INTEGER,
     actual_duration_minutes INTEGER,
     
+    -- Ruta y condiciones
+    route_coordinates TEXT[], -- Ruta completa como array de coordenadas
+    traffic_conditions JSONB, -- Condiciones de tráfico del día
+    weather_conditions JSONB, -- Condiciones meteorológicas
+    
+    -- Origen de la tournée
+    tournee_origin VARCHAR(50) DEFAULT 'manual', -- 'manual', 'api_sync', 'webhook'
+    external_tournee_id VARCHAR(100), -- ID de la tournée en el sistema externo
+    integration_id UUID REFERENCES api_integrations(integration_id) ON DELETE SET NULL,
+    
     -- Metadatos
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -211,6 +227,16 @@ CREATE TABLE tournees (
     CONSTRAINT valid_times CHECK (
         (start_time IS NULL OR end_time IS NULL) OR 
         (end_time >= start_time)
+    ),
+    CONSTRAINT valid_route_coordinates CHECK (
+        route_coordinates IS NULL OR array_length(route_coordinates, 1) > 0
+    ),
+    CONSTRAINT valid_tournee_origin CHECK (
+        tournee_origin IN ('manual', 'api_sync', 'webhook')
+    ),
+    CONSTRAINT valid_external_tournee_id CHECK (
+        (tournee_origin = 'manual' AND external_tournee_id IS NULL) OR
+        (tournee_origin IN ('api_sync', 'webhook') AND external_tournee_id IS NOT NULL)
     )
 );
 
@@ -223,3 +249,13 @@ CREATE INDEX idx_tournees_status ON tournees(tournee_status);
 CREATE INDEX idx_tournees_deleted_at ON tournees(deleted_at);
 CREATE INDEX idx_tournees_driver_date ON tournees(driver_id, tournee_date);
 CREATE INDEX idx_tournees_company_date ON tournees(company_id, tournee_date);
+CREATE INDEX idx_tournees_traffic_conditions ON tournees USING GIN(traffic_conditions);
+CREATE INDEX idx_tournees_weather_conditions ON tournees USING GIN(weather_conditions);
+CREATE INDEX idx_tournees_origin ON tournees(tournee_origin);
+CREATE INDEX idx_tournees_external_id ON tournees(external_tournee_id);
+CREATE INDEX idx_tournees_integration_id ON tournees(integration_id);
+
+-- Índices compuestos multi-tenant optimizados
+CREATE INDEX idx_tournees_company_date_driver ON tournees(company_id, tournee_date, driver_id);
+CREATE INDEX idx_tournees_company_status_date ON tournees(company_id, tournee_status, tournee_date);
+CREATE INDEX idx_tournees_company_vehicle_date ON tournees(company_id, vehicle_id, tournee_date);

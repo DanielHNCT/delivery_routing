@@ -25,11 +25,15 @@ CREATE TYPE delivery_failure_reason AS ENUM (
 
 CREATE TABLE packages (
     package_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
     tournee_id UUID NOT NULL REFERENCES tournees(tournee_id) ON DELETE CASCADE,
     
     -- Información del paquete
     tracking_number VARCHAR(100) NOT NULL,
     external_tracking_number VARCHAR(100), -- Para APIs externas como Colis Privé
+    package_origin VARCHAR(50) DEFAULT 'manual', -- 'manual', 'api_sync', 'webhook'
+    external_package_id VARCHAR(100), -- ID del paquete en el sistema externo
+    integration_id UUID REFERENCES api_integrations(integration_id) ON DELETE SET NULL,
     package_type VARCHAR(100),
     package_weight DECIMAL(6,2),
     package_dimensions VARCHAR(50), -- formato: "LxWxH cm"
@@ -55,6 +59,11 @@ CREATE TABLE packages (
     delivery_photo TEXT,
     signature_required BOOLEAN DEFAULT FALSE,
     signature_image TEXT,
+    signature_photo TEXT, -- Fotos de firma de entrega
+    
+    -- Ubicación y tiempo de entrega
+    delivery_coordinates POINT, -- Ubicación exacta de entrega (PostGIS)
+    delivery_duration_minutes INTEGER, -- Tiempo de entrega en minutos
     
     -- Notas del chofer
     driver_notes TEXT,
@@ -68,7 +77,15 @@ CREATE TABLE packages (
     -- Constraints
     CONSTRAINT unique_tracking_per_tournee UNIQUE (tournee_id, tracking_number),
     CONSTRAINT valid_delivery_attempts CHECK (delivery_attempts >= 0),
-    CONSTRAINT valid_package_weight CHECK (package_weight > 0 OR package_weight IS NULL)
+    CONSTRAINT valid_package_weight CHECK (package_weight > 0 OR package_weight IS NULL),
+    CONSTRAINT valid_delivery_duration CHECK (delivery_duration_minutes >= 0 OR delivery_duration_minutes IS NULL),
+    CONSTRAINT valid_package_origin CHECK (
+        package_origin IN ('manual', 'api_sync', 'webhook')
+    ),
+    CONSTRAINT valid_external_package_id CHECK (
+        (package_origin = 'manual' AND external_package_id IS NULL) OR
+        (package_origin IN ('api_sync', 'webhook') AND external_package_id IS NOT NULL)
+    )
 );
 
 -- Índices para packages
@@ -79,6 +96,16 @@ CREATE INDEX idx_packages_status ON packages(delivery_status);
 CREATE INDEX idx_packages_delivery_date ON packages(delivery_date);
 CREATE INDEX idx_packages_deleted_at ON packages(deleted_at);
 CREATE INDEX idx_packages_status_date ON packages(delivery_status, delivery_date);
+CREATE INDEX idx_packages_delivery_coordinates ON packages USING GIST(delivery_coordinates);
+CREATE INDEX idx_packages_delivery_duration ON packages(delivery_duration_minutes);
+CREATE INDEX idx_packages_origin ON packages(package_origin);
+CREATE INDEX idx_packages_external_id ON packages(external_package_id);
+CREATE INDEX idx_packages_integration_id ON packages(integration_id);
+
+-- Índices compuestos multi-tenant optimizados
+CREATE INDEX idx_packages_company_status_date ON packages(company_id, delivery_status, delivery_date);
+CREATE INDEX idx_packages_company_tournee_date ON packages(company_id, tournee_id, delivery_date);
+CREATE INDEX idx_packages_company_failure_reason ON packages(company_id, failure_reason, delivery_date);
 
 -- =====================================================
 -- NIVEL 4B: DRIVER_FIELD_DATA (Datos crowdsourced por choferes)
@@ -143,7 +170,7 @@ CREATE INDEX idx_driver_field_data_deleted_at ON driver_field_data(deleted_at);
 -- =====================================================
 
 CREATE TABLE performance_analytics (
-    analytics_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    analytics_id UUID NOT NULL DEFAULT uuid_generate_v4(),
     company_id UUID NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
     driver_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     
@@ -195,7 +222,88 @@ CREATE TABLE performance_analytics (
         km_driven >= 0 AND
         fuel_consumed >= 0
     )
-);
+) PARTITION BY RANGE (week_start_date);
+
+-- Crear particiones por mes para los próximos 24 meses
+CREATE TABLE performance_analytics_2024_01 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+
+CREATE TABLE performance_analytics_2024_02 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+
+CREATE TABLE performance_analytics_2024_03 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-03-01') TO ('2024-04-01');
+
+CREATE TABLE performance_analytics_2024_04 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-04-01') TO ('2024-05-01');
+
+CREATE TABLE performance_analytics_2024_05 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-05-01') TO ('2024-06-01');
+
+CREATE TABLE performance_analytics_2024_06 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-06-01') TO ('2024-07-01');
+
+CREATE TABLE performance_analytics_2024_07 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-07-01') TO ('2024-08-01');
+
+CREATE TABLE performance_analytics_2024_08 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-08-01') TO ('2024-09-01');
+
+CREATE TABLE performance_analytics_2024_09 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-09-01') TO ('2024-10-01');
+
+CREATE TABLE performance_analytics_2024_10 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-10-01') TO ('2024-11-01');
+
+CREATE TABLE performance_analytics_2024_11 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-11-01') TO ('2024-12-01');
+
+CREATE TABLE performance_analytics_2024_12 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2024-12-01') TO ('2025-01-01');
+
+-- Particiones para 2025
+CREATE TABLE performance_analytics_2025_01 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
+
+CREATE TABLE performance_analytics_2025_02 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
+
+CREATE TABLE performance_analytics_2025_03 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-03-01') TO ('2025-04-01');
+
+CREATE TABLE performance_analytics_2025_04 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-04-01') TO ('2025-05-01');
+
+CREATE TABLE performance_analytics_2025_05 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
+
+CREATE TABLE performance_analytics_2025_06 PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+
+-- Partición por defecto para fechas futuras
+CREATE TABLE performance_analytics_future PARTITION OF performance_analytics
+    FOR VALUES FROM ('2025-07-01') TO (MAXVALUE);
+
+-- Agregar índices específicos para cada partición
+CREATE INDEX idx_performance_analytics_2024_01_company_driver ON performance_analytics_2024_01(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_02_company_driver ON performance_analytics_2024_02(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_03_company_driver ON performance_analytics_2024_03(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_04_company_driver ON performance_analytics_2024_04(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_05_company_driver ON performance_analytics_2024_05(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_06_company_driver ON performance_analytics_2024_06(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_07_company_driver ON performance_analytics_2024_07(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_08_company_driver ON performance_analytics_2024_08(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_09_company_driver ON performance_analytics_2024_09(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_10_company_driver ON performance_analytics_2024_10(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_11_company_driver ON performance_analytics_2024_11(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2024_12_company_driver ON performance_analytics_2024_12(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_01_company_driver ON performance_analytics_2025_01(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_02_company_driver ON performance_analytics_2025_02(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_03_company_driver ON performance_analytics_2025_03(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_04_company_driver ON performance_analytics_2025_04(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_05_company_driver ON performance_analytics_2025_05(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_2025_06_company_driver ON performance_analytics_2025_06(company_id, driver_id);
+CREATE INDEX idx_performance_analytics_future_company_driver ON performance_analytics_future(company_id, driver_id);
 
 -- Índices para performance_analytics
 CREATE INDEX idx_performance_analytics_company_id ON performance_analytics(company_id);
@@ -272,3 +380,63 @@ CREATE INDEX idx_notifications_log_sent_date ON notifications_log(sent_date);
 CREATE INDEX idx_notifications_log_read_status ON notifications_log(read_status);
 CREATE INDEX idx_notifications_log_company_type ON notifications_log(company_id, notification_type);
 CREATE INDEX idx_notifications_log_unread ON notifications_log(company_id, read_status) WHERE read_status = FALSE;
+
+-- =====================================================
+-- NIVEL 5C: SYNC_LOG (Registro de sincronizaciones con APIs)
+-- =====================================================
+
+CREATE TABLE sync_log (
+    sync_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
+    integration_id UUID NOT NULL REFERENCES api_integrations(integration_id) ON DELETE CASCADE,
+    
+    -- Información de la sincronización
+    sync_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    sync_type VARCHAR(50) NOT NULL, -- 'full_sync', 'incremental', 'webhook'
+    sync_direction VARCHAR(20) NOT NULL, -- 'inbound', 'outbound', 'bidirectional'
+    
+    -- Métricas de la sincronización
+    records_processed INTEGER NOT NULL DEFAULT 0,
+    records_created INTEGER DEFAULT 0,
+    records_updated INTEGER DEFAULT 0,
+    records_deleted INTEGER DEFAULT 0,
+    records_failed INTEGER DEFAULT 0,
+    errors_count INTEGER NOT NULL DEFAULT 0,
+    
+    -- Performance y duración
+    sync_duration_seconds INTEGER,
+    sync_start_time TIMESTAMP WITH TIME ZONE,
+    sync_end_time TIMESTAMP WITH TIME ZONE,
+    
+    -- Detalles de errores y estado
+    error_details JSONB DEFAULT '{}',
+    sync_status VARCHAR(20) NOT NULL DEFAULT 'completed', -- 'completed', 'failed', 'partial'
+    retry_count INTEGER DEFAULT 0,
+    
+    -- Metadatos adicionales
+    api_response_code INTEGER,
+    api_response_time_ms INTEGER,
+    data_size_bytes BIGINT,
+    
+    -- Metadatos
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT valid_sync_duration CHECK (sync_duration_seconds >= 0),
+    CONSTRAINT valid_records_count CHECK (records_processed >= 0),
+    CONSTRAINT valid_errors_count CHECK (errors_count >= 0),
+    CONSTRAINT valid_sync_times CHECK (
+        (sync_start_time IS NULL AND sync_end_time IS NULL) OR
+        (sync_start_time IS NOT NULL AND sync_end_time IS NOT NULL AND sync_end_time >= sync_start_time)
+    )
+);
+
+-- Índices para sync_log
+CREATE INDEX idx_sync_log_integration_id ON sync_log(integration_id);
+CREATE INDEX idx_sync_log_sync_date ON sync_log(sync_date);
+CREATE INDEX idx_sync_log_sync_status ON sync_log(sync_status);
+CREATE INDEX idx_sync_log_sync_type ON sync_log(sync_type);
+CREATE INDEX idx_sync_log_errors_count ON sync_log(errors_count);
+CREATE INDEX idx_sync_log_company_date ON sync_log(company_id, sync_date);
+CREATE INDEX idx_sync_log_integration_date ON sync_log(integration_id, sync_date);
+CREATE INDEX idx_sync_log_status_date ON sync_log(sync_status, sync_date);
