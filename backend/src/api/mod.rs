@@ -10,13 +10,14 @@ pub mod tournees;
 pub mod packages;
 
 use axum::{
-    routing::{get, post, put, delete},
+    routing::{get, post},
     Router,
 };
+use sqlx::PgPool;
 use crate::middleware::cors::cors_middleware;
 
 /// Configura todas las rutas de la API
-pub fn create_api_router() -> Router {
+pub fn create_api_router() -> Router<PgPool> {
     Router::new()
         // Rutas públicas (sin autenticación)
         .route("/health", get(health_check))

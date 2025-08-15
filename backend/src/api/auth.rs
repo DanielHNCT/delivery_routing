@@ -4,6 +4,7 @@
 
 use axum::{
     extract::State,
+    Extension,
     Json,
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
@@ -14,7 +15,7 @@ use chrono::{Utc, Duration};
 use validator::Validate;
 
 use crate::{
-    models::{LoginRequest, RegisterRequest, AuthResponse, UserInfo, CreateUser, UserType},
+    models::{LoginRequest, RegisterRequest, AuthResponse, UserInfo},
     utils::errors::{AppError, AppResult},
     middleware::auth::{Claims, AuthenticatedUser},
 };

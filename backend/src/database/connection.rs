@@ -79,14 +79,14 @@ async fn test_connection(pool: &DatabasePool) -> Result<(), sqlx::Error> {
 }
 
 /// Obtener una conexión del pool
-pub async fn get_connection(pool: &DatabasePool) -> Result<PgConnection, sqlx::Error> {
+pub async fn get_connection(_pool: &DatabasePool) -> Result<PgConnection, sqlx::Error> {
     // TODO: Implementar cuando sea necesario
     // Por ahora, retornamos un error ya que no es crítico para la funcionalidad básica
     Err(sqlx::Error::Configuration("Función no implementada".into()))
 }
 
 /// Ejecutar migraciones de la base de datos
-pub async fn run_migrations(pool: &DatabasePool) -> Result<(), sqlx::Error> {
+pub async fn run_migrations(_pool: &DatabasePool) -> Result<(), sqlx::Error> {
     info!("🔄 Ejecutando migraciones de la base de datos...");
     
     // TODO: Implementar cuando se cree el directorio migrations

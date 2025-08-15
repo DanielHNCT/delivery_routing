@@ -281,14 +281,11 @@ pub async fn update_package(
     );
 
     // Ejecutar query
-    let package = sqlx::query_as!(
-        Package,
-        &query,
-        target_package_uuid,
-        company_uuid
-    )
-    .fetch_one(&pool)
-    .await?;
+    let package = sqlx::query_as::<_, Package>(&query)
+        .bind(target_package_uuid)
+        .bind(company_uuid)
+        .fetch_one(&pool)
+        .await?;
 
     Ok(Json(package))
 }

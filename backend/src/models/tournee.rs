@@ -53,7 +53,6 @@ pub struct CreateTournee {
     pub driver_id: Option<Uuid>,
     pub vehicle_id: Option<Uuid>,
     
-    #[validate(required(message = "Fecha planificada es requerida"))]
     pub planned_date: DateTime<Utc>,
     
     pub start_time: Option<DateTime<Utc>>,

@@ -1,4 +1,4 @@
-use crate::models::{LoginRequest, LoginResponse, TourneeRequest, Commun};
+use crate::external_models::{LoginRequest, LoginResponse, TourneeRequest, Commun};
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
@@ -248,7 +248,7 @@ impl ColisPriveClient {
 
         let tournee_request = TourneeRequest {
             enum_type_lettre_voiture: "ordreScan".to_string(),
-            bean_params: crate::models::TourneeParams {
+            bean_params: crate::external_models::TourneeParams {
                 societe: societe.to_string(),
                 matricule: matricule.to_string(),
                 date_debut: date.to_string(),

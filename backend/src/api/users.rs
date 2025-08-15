@@ -12,7 +12,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    models::{User, CreateUser, UpdateUser, UserResponse, UserType},
+    models::{CreateUser, UpdateUser, UserResponse, UserType},
     utils::errors::{AppError, AppResult},
     middleware::auth::AuthenticatedUser,
 };

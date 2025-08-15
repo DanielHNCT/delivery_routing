@@ -13,17 +13,13 @@ use uuid::Uuid;
 pub struct Company {
     pub id: Uuid,
     pub name: String,
-    pub address: Option<String>,
-    pub city: Option<String>,
-    pub postal_code: Option<String>,
-    pub country: Option<String>,
-    pub phone: Option<String>,
-    pub email: Option<String>,
-    pub website: Option<String>,
-    pub siret: Option<String>,
-    pub tva_number: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub address: String,
+    pub subscription_plan: String,
+    pub subscription_status: String,
+    pub max_drivers: i32,
+    pub max_vehicles: i32,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -33,32 +29,20 @@ pub struct CreateCompany {
     #[validate(length(min = 2, max = 100, message = "Nombre debe tener entre 2 y 100 caracteres"))]
     pub name: String,
     
-    #[validate(length(max = 200, message = "Dirección no puede exceder 200 caracteres"))]
-    pub address: Option<String>,
+    #[validate(length(max = 500, message = "Dirección no puede exceder 500 caracteres"))]
+    pub address: String,
     
-    #[validate(length(max = 100, message = "Ciudad no puede exceder 100 caracteres"))]
-    pub city: Option<String>,
+    #[validate(length(max = 50, message = "Plan de suscripción no puede exceder 50 caracteres"))]
+    pub subscription_plan: Option<String>,
     
-    #[validate(length(max = 20, message = "Código postal no puede exceder 20 caracteres"))]
-    pub postal_code: Option<String>,
+    #[validate(length(max = 20, message = "Estado de suscripción no puede exceder 20 caracteres"))]
+    pub subscription_status: Option<String>,
     
-    #[validate(length(max = 100, message = "País no puede exceder 100 caracteres"))]
-    pub country: Option<String>,
+    #[validate(range(min = 1, max = 1000, message = "Máximo de conductores debe estar entre 1 y 1000"))]
+    pub max_drivers: Option<i32>,
     
-    #[validate(length(max = 20, message = "Teléfono no puede exceder 20 caracteres"))]
-    pub phone: Option<String>,
-    
-    #[validate(email(message = "Email inválido"))]
-    pub email: Option<String>,
-    
-    #[validate(url(message = "Website inválido"))]
-    pub website: Option<String>,
-    
-    #[validate(length(max = 50, message = "SIRET no puede exceder 50 caracteres"))]
-    pub siret: Option<String>,
-    
-    #[validate(length(max = 50, message = "Número de TVA no puede exceder 50 caracteres"))]
-    pub tva_number: Option<String>,
+    #[validate(range(min = 1, max = 1000, message = "Máximo de vehículos debe estar entre 1 y 1000"))]
+    pub max_vehicles: Option<i32>,
 }
 
 /// Request para actualizar una company
@@ -67,30 +51,18 @@ pub struct UpdateCompany {
     #[validate(length(min = 2, max = 100, message = "Nombre debe tener entre 2 y 100 caracteres"))]
     pub name: Option<String>,
     
-    #[validate(length(max = 200, message = "Dirección no puede exceder 200 caracteres"))]
+    #[validate(length(max = 500, message = "Dirección no puede exceder 500 caracteres"))]
     pub address: Option<String>,
     
-    #[validate(length(max = 100, message = "Ciudad no puede exceder 100 caracteres"))]
-    pub city: Option<String>,
+    #[validate(length(max = 50, message = "Plan de suscripción no puede exceder 50 caracteres"))]
+    pub subscription_plan: Option<String>,
     
-    #[validate(length(max = 20, message = "Código postal no puede exceder 20 caracteres"))]
-    pub postal_code: Option<String>,
+    #[validate(length(max = 20, message = "Estado de suscripción no puede exceder 20 caracteres"))]
+    pub subscription_status: Option<String>,
     
-    #[validate(length(max = 100, message = "País no puede exceder 100 caracteres"))]
-    pub country: Option<String>,
+    #[validate(range(min = 1, max = 1000, message = "Máximo de conductores debe estar entre 1 y 1000"))]
+    pub max_drivers: Option<i32>,
     
-    #[validate(length(max = 20, message = "Teléfono no puede exceder 20 caracteres"))]
-    pub phone: Option<String>,
-    
-    #[validate(email(message = "Email inválido"))]
-    pub email: Option<String>,
-    
-    #[validate(url(message = "Website inválido"))]
-    pub website: Option<String>,
-    
-    #[validate(length(max = 50, message = "SIRET no puede exceder 50 caracteres"))]
-    pub siret: Option<String>,
-    
-    #[validate(length(max = 50, message = "Número de TVA no puede exceder 50 caracteres"))]
-    pub tva_number: Option<String>,
+    #[validate(range(min = 1, max = 1000, message = "Máximo de vehículos debe estar entre 1 y 1000"))]
+    pub max_vehicles: Option<i32>,
 }

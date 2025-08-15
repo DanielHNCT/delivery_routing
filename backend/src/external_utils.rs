@@ -1,6 +1,6 @@
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use crate::models::Delivery;
+use crate::external_models::Delivery;
 
 /// Decodifica un string Base64 a texto plano
 /// Maneja casos especiales como respuestas null (feriados, días sin trabajo)
