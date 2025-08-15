@@ -3,7 +3,13 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use crate::models::Delivery;
 
 /// Decodifica un string Base64 a texto plano
+/// Maneja casos especiales como respuestas null (feriados, días sin trabajo)
 pub fn decode_base64(encoded: &str) -> Result<String> {
+    // Manejar caso cuando no hay datos (feriados, días sin trabajo)
+    if encoded == "null" || encoded.trim().is_empty() {
+        return Ok("No hay tournées programadas para esta fecha (posible feriado o día sin trabajo)".to_string());
+    }
+    
     let decoded_bytes = BASE64.decode(encoded)?;
     let decoded_string = String::from_utf8(decoded_bytes)?;
     Ok(decoded_string)

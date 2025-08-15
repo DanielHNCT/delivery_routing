@@ -77,11 +77,15 @@ async fn main() -> Result<()> {
 
             match decode_base64(&tournee_data) {
                 Ok(decoded_str) => {
-                    println!("✅ Datos decodificados correctamente");
-                    println!("\n📊 Información de la tournée:");
-                    println!("📋 Datos completos de la tournée:");
-                    println!("{}", decoded_str);
-
+                    if decoded_str.contains("No hay tournées programadas") {
+                        println!("ℹ️  {}", decoded_str);
+                        println!("✅ Sistema funcionando correctamente - La API responde normalmente");
+                    } else {
+                        println!("✅ Datos decodificados correctamente");
+                        println!("\n📊 Información de la tournée:");
+                        println!("📋 Datos completos de la tournée:");
+                        println!("{}", decoded_str);
+                    }
                     println!("\n🎉 MVP completado exitosamente!");
                 }
                 Err(e) => {

@@ -63,7 +63,14 @@ check_extensions() {
     if ! psql -d "$DB_NAME" -c "SELECT PostGIS_Version();" &> /dev/null; then
         print_warning "Extensión postgis no disponible"
         print_status "Instalando extensión postgis..."
-        psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+        # Intentar con postgis primero (PostgreSQL 17+)
+        if psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS postgis;" &> /dev/null; then
+            print_success "Extensión postgis instalada ✓"
+        else
+            # Fallback a postgis-3 si postgis falla
+            print_status "Intentando con postgis-3..."
+            psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS \"postgis-3\";"
+        fi
     fi
     
     print_success "Extensiones verificadas ✓"
@@ -117,7 +124,7 @@ verify_installation() {
     print_status "Verificando instalación..."
     
     # Verificar tablas principales
-    local tables=("companies" "users" "vehicles" "tournees" "packages")
+    local tables=("companies" "users" "vehicles" "tournees" "packages" "api_integrations" "sync_log")
     local missing_tables=()
     
     for table in "${tables[@]}"; do
@@ -172,6 +179,8 @@ show_connection_info() {
     echo "2. Implementar autenticación JWT"
     echo "3. Configurar Row Level Security (RLS)"
     echo "4. Probar las queries de ejemplo incluidas"
+    echo "5. Configurar integraciones con APIs externas (Colis Privé, Chronopost)"
+    echo "6. Probar las funciones de sincronización de APIs"
     echo
     echo "📚 Documentación: README.md"
     echo "🧪 Datos de prueba incluidos para testing"
@@ -216,6 +225,7 @@ main() {
     execute_sql_file "03_packages_and_analytics.sql" "Packages, Field Data y Analytics"
     execute_sql_file "04_functions_triggers_security.sql" "Functions, Triggers y Security"
     execute_sql_file "05_views_examples_and_data.sql" "Views, Examples y Data de prueba"
+    execute_sql_file "06_api_integration_functions.sql" "API Integration Functions"
     
     echo
     verify_installation
