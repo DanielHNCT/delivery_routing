@@ -1,35 +1,40 @@
 //! Modelo de User
 //! 
-//! Este módulo contiene el struct User, tipos de usuario y variantes para CRUD operations.
+//! Este módulo contiene el struct User y sus variantes para CRUD operations.
+//! Mapea exactamente al schema PostgreSQL con primary key 'id'.
 
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{FromRow, Type};
 use validator::Validate;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-/// Tipos de usuario
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+/// Tipo de usuario - mapea al ENUM user_type
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
 #[sqlx(type_name = "user_type", rename_all = "lowercase")]
 pub enum UserType {
     Admin,
     Driver,
 }
 
-/// User principal
+/// Estado del usuario - mapea al ENUM user_status
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[sqlx(type_name = "user_status", rename_all = "lowercase")]
+pub enum UserStatus {
+    Active,
+    Inactive,
+    Suspended,
+}
+
+/// User principal - mapea exactamente a la tabla users del schema
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
     pub company_id: Uuid,
-    pub username: String,
-    pub email: String,
-    pub password_hash: String,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub phone: Option<String>,
     pub user_type: UserType,
-    pub is_active: bool,
-    pub last_login: Option<DateTime<Utc>>,
+    pub user_status: UserStatus,
+    pub username: String,
+    pub password_hash: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -37,76 +42,100 @@ pub struct User {
 
 /// Request para crear un nuevo usuario
 #[derive(Debug, Deserialize, Validate)]
-pub struct CreateUser {
-    #[validate(length(min = 3, max = 50, message = "Username debe tener entre 3 y 50 caracteres"))]
+pub struct CreateUserRequest {
+    #[validate(length(min = 3, max = 50))]
     pub username: String,
     
-    #[validate(email(message = "Email inválido"))]
-    pub email: String,
-    
-    #[validate(length(min = 6, message = "Password debe tener al menos 6 caracteres"))]
+    #[validate(length(min = 6, max = 100))]
     pub password: String,
     
-    #[validate(length(max = 100, message = "Nombre no puede exceder 100 caracteres"))]
-    pub first_name: Option<String>,
-    
-    #[validate(length(max = 100, message = "Apellido no puede exceder 100 caracteres"))]
-    pub last_name: Option<String>,
-    
-    #[validate(length(max = 20, message = "Teléfono no puede exceder 20 caracteres"))]
-    pub phone: Option<String>,
+    #[validate(email)]
+    pub email: String,
     
     pub user_type: UserType,
 }
 
-/// Request para actualizar un usuario
+/// Request para actualizar un usuario existente
 #[derive(Debug, Deserialize, Validate)]
-pub struct UpdateUser {
-    #[validate(length(min = 3, max = 50, message = "Username debe tener entre 3 y 50 caracteres"))]
+pub struct UpdateUserRequest {
+    #[validate(length(min = 3, max = 50))]
     pub username: Option<String>,
     
-    #[validate(email(message = "Email inválido"))]
+    #[validate(email)]
     pub email: Option<String>,
     
-    #[validate(length(min = 6, message = "Password debe tener al menos 6 caracteres"))]
-    pub password: Option<String>,
-    
-    #[validate(length(max = 100, message = "Nombre no puede exceder 100 caracteres"))]
-    pub first_name: Option<String>,
-    
-    #[validate(length(max = 100, message = "Apellido no puede exceder 100 caracteres"))]
-    pub last_name: Option<String>,
-    
-    #[validate(length(max = 20, message = "Teléfono no puede exceder 20 caracteres"))]
-    pub phone: Option<String>,
-    
     pub user_type: Option<UserType>,
-    pub is_active: Option<bool>,
-}
-
-/// Request de login
-#[derive(Debug, Deserialize, Validate)]
-pub struct LoginUser {
-    #[validate(email(message = "Email inválido"))]
-    pub email: String,
+    pub user_status: Option<UserStatus>,
     
-    #[validate(length(min = 1, message = "Password es requerido"))]
-    pub password: String,
+    #[validate(length(min = 6, max = 100))]
+    pub password: Option<String>,
 }
 
-/// Usuario sin información sensible para respuestas
-#[derive(Debug, Clone, Serialize)]
+/// Response de usuario para la API
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
     pub id: Uuid,
     pub company_id: Uuid,
-    pub username: String,
-    pub email: String,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub phone: Option<String>,
     pub user_type: UserType,
-    pub is_active: bool,
-    pub last_login: Option<DateTime<Utc>>,
+    pub user_status: UserStatus,
+    pub username: String,
+    pub email: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Response de usuario para listados paginados
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserListResponse {
+    pub users: Vec<UserResponse>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub total_pages: i32,
+}
+
+/// Filtros para búsqueda de usuarios
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserFilters {
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub user_type: Option<UserType>,
+    pub user_status: Option<UserStatus>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+    pub page: Option<i32>,
+}
+
+/// Request para login de usuario
+#[derive(Debug, Deserialize, Validate)]
+pub struct UserLoginRequest {
+    #[validate(length(min = 3, max = 50))]
+    pub username: String,
+    
+    #[validate(length(min = 6, max = 100))]
+    pub password: String,
+}
+
+/// Response para login exitoso
+#[derive(Debug, Serialize)]
+pub struct UserLoginResponse {
+    pub user: UserResponse,
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
+}
+
+impl From<User> for UserResponse {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            company_id: user.company_id,
+            user_type: user.user_type,
+            user_status: user.user_status,
+            username: user.username,
+            email: None, // Campo no existe en el schema actual
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        }
+    }
 }

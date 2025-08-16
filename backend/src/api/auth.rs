@@ -1,263 +1,309 @@
-//! Endpoints de autenticación
+//! Handlers de autenticación
 //! 
-//! Este módulo contiene los endpoints para login, registro y verificación de usuario.
+//! Este módulo maneja el login, registro y renovación de tokens JWT.
 
 use axum::{
-    extract::State,
-    Extension,
+    extract::{Extension, State},
+    http::StatusCode,
     Json,
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
-use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{Utc, Duration};
 use validator::Validate;
 
 use crate::{
-    models::{LoginRequest, RegisterRequest, AuthResponse, UserInfo},
+    config::EnvironmentConfig,
+    models::user::{User, UserType, UserStatus, CreateUserRequest, UserResponse},
     utils::errors::{AppError, AppResult},
-    middleware::auth::{Claims, AuthenticatedUser},
+    utils::jwt::{generate_token, JwtConfig},
+    middleware::auth::AuthenticatedUser,
+    state::AppState,
 };
 
-/// Login de usuario
+/// Request de login
+#[derive(Debug, Deserialize, Validate)]
+pub struct LoginRequest {
+    #[validate(length(min = 3, max = 50))]
+    pub username: String,
+    
+    #[validate(length(min = 6, max = 100))]
+    pub password: String,
+}
+
+/// Response de login exitoso
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
+    pub user: UserResponse,
+}
+
+/// Request para refresh token
+#[derive(Debug, Deserialize, Validate)]
+pub struct RefreshTokenRequest {
+    #[validate(length(min = 10))]
+    pub refresh_token: String,
+}
+
+/// Response de refresh token
+#[derive(Debug, Serialize)]
+pub struct RefreshTokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
+}
+
+/// Request de registro
+#[derive(Debug, Deserialize, Validate)]
+pub struct RegisterRequest {
+    #[validate(length(min = 3, max = 50))]
+    pub username: String,
+    
+    #[validate(email)]
+    pub email: String,
+    
+    #[validate(length(min = 6, max = 100))]
+    pub password: String,
+    
+    pub user_type: UserType,
+}
+
+/// Handler de login
 pub async fn login(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Json(login_data): Json<LoginRequest>,
-) -> AppResult<Json<AuthResponse>> {
+) -> AppResult<Json<LoginResponse>> {
+    let pool = &app_state.pool;
+    let config = &app_state.config;
     // Validar datos de entrada
     login_data.validate()
-        .map_err(AppError::ValidationError)?;
+        .map_err(AppError::Validation)?;
 
-    // Buscar usuario por email
-    let user = sqlx::query_as!(
-        crate::models::User,
+    // Buscar usuario por username
+    let row = sqlx::query!(
         r#"
-        SELECT id, company_id, username, email, password_hash, first_name, last_name, 
-               phone, user_type as "user_type: UserType", is_active, last_login, 
-               created_at, updated_at, deleted_at
+        SELECT 
+            id, company_id, user_type as "user_type: String", user_status as "user_status: String", username, 
+            password_hash, created_at, updated_at, deleted_at
         FROM users 
-        WHERE email = $1 AND deleted_at IS NULL
+        WHERE username = $1 
+        AND deleted_at IS NULL
         "#,
-        login_data.email
+        login_data.username
     )
-    .fetch_optional(&pool)
-    .await?
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::Database(e))?
     .ok_or_else(|| AppError::Unauthorized("Credenciales inválidas".to_string()))?;
 
+    let user = User {
+        id: row.id,
+        company_id: row.company_id,
+        user_type: match row.user_type.as_str() {
+            "admin" => UserType::Admin,
+            "driver" => UserType::Driver,
+            _ => return Err(AppError::Database(sqlx::Error::Decode("Invalid user_type".into()))),
+        },
+        user_status: match row.user_status.as_str() {
+            "active" => UserStatus::Active,
+            "inactive" => UserStatus::Inactive,
+            "suspended" => UserStatus::Suspended,
+            _ => return Err(AppError::Database(sqlx::Error::Decode("Invalid user_status".into()))),
+        },
+        username: row.username,
+        password_hash: row.password_hash,
+        created_at: row.created_at.expect("created_at should not be null"),
+        updated_at: row.updated_at.expect("updated_at should not be null"),
+        deleted_at: row.deleted_at,
+    };
+
     // Verificar que el usuario esté activo
-    if !user.is_active {
-        return Err(AppError::Unauthorized("Usuario inactivo".to_string()));
+    if user.user_status != UserStatus::Active {
+        return Err(AppError::Unauthorized("Usuario inactivo o suspendido".to_string()));
     }
 
     // Verificar password
-    if !verify(&login_data.password, &user.password_hash)? {
+    let password_valid = verify(&login_data.password, &user.password_hash)
+        .map_err(|e| AppError::Hash(format!("Error verificando password: {}", e)))?;
+
+    if !password_valid {
         return Err(AppError::Unauthorized("Credenciales inválidas".to_string()));
     }
 
-    // Obtener información de la empresa
-    let company = sqlx::query_as!(
-        crate::models::Company,
-        "SELECT * FROM companies WHERE id = $1 AND deleted_at IS NULL",
-        user.company_id
-    )
-    .fetch_one(&pool)
-    .await?;
-
     // Generar JWT token
-    let secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalError("JWT_SECRET no configurado".to_string()))?;
+    let jwt_config = JwtConfig::from(config);
+    let access_token = generate_token(user.id, user.company_id, user.user_type.clone(), &jwt_config)?;
 
-    let expiration = (Utc::now() + Duration::hours(24)).timestamp() as usize;
-    let claims = Claims {
-        sub: user.id.to_string(),
-        company_id: user.company_id.to_string(),
-        exp: expiration,
-        iat: Utc::now().timestamp() as usize,
-    };
+    // Convertir a response
+    let user_response = UserResponse::from(user);
 
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_ref()),
-    )?;
-
-    // Actualizar último login
-    sqlx::query!(
-        "UPDATE users SET last_login = $1 WHERE id = $2",
-        Utc::now(),
-        user.id
-    )
-    .execute(&pool)
-    .await?;
-
-    // Crear respuesta
-    let user_info = UserInfo {
-        id: user.id.to_string(),
-        email: user.email,
-        username: user.username,
-        user_type: format!("{:?}", user.user_type),
-        company_id: user.company_id.to_string(),
-        company_name: company.name,
-    };
-
-    let response = AuthResponse {
-        token,
-        user: user_info,
+    let response = LoginResponse {
+        access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: jwt_config.expiration,
+        user: user_response,
     };
 
     Ok(Json(response))
 }
 
-/// Registro de nueva empresa y usuario admin
+/// Handler de registro
 pub async fn register(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Json(register_data): Json<RegisterRequest>,
-) -> AppResult<Json<AuthResponse>> {
+) -> AppResult<Json<LoginResponse>> {
+    let pool = &app_state.pool;
+    let config = &app_state.config;
     // Validar datos de entrada
     register_data.validate()
-        .map_err(AppError::ValidationError)?;
+        .map_err(AppError::Validation)?;
 
-    // Verificar que el email no esté en uso
+    // Verificar que el username no exista
     let existing_user = sqlx::query!(
-        "SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL",
-        register_data.admin_email
+        "SELECT id FROM users WHERE username = $1 AND deleted_at IS NULL",
+        register_data.username
     )
-    .fetch_optional(&pool)
-    .await?;
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
     if existing_user.is_some() {
-        return Err(AppError::Conflict("El email ya está en uso".to_string()));
+        return Err(AppError::Conflict("Username ya existe".to_string()));
     }
 
-    // Verificar que el username no esté en uso
-    let existing_username = sqlx::query!(
-        "SELECT id FROM users WHERE username = $1 AND deleted_at IS NULL",
-        register_data.admin_username
+    // Verificar que el email no exista
+    let existing_email = sqlx::query!(
+        "SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL",
+        register_data.email
     )
-    .fetch_optional(&pool)
-    .await?;
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
-    if existing_username.is_some() {
-        return Err(AppError::Conflict("El username ya está en uso".to_string()));
+    if existing_email.is_some() {
+        return Err(AppError::Conflict("Email ya existe".to_string()));
     }
 
-    // Crear empresa
-    let company_id = Uuid::new_v4();
-    let now = Utc::now();
+    // Hash del password
+    let password_hash = hash(&register_data.password, DEFAULT_COST)
+        .map_err(|e| AppError::Hash(format!("Error hasheando password: {}", e)))?;
 
-    sqlx::query!(
+    // Crear usuario (asumiendo que se crea en una empresa por defecto)
+    // En producción, esto debería ser manejado por un admin o proceso de onboarding
+    let company_id = Uuid::new_v4(); // Placeholder - en producción esto vendría del contexto
+
+    let row = sqlx::query!(
         r#"
-        INSERT INTO companies (id, name, created_at, updated_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO users (
+            company_id, user_type, user_status, username, 
+            password_hash, created_at, updated_at
+        ) VALUES ($1, $2::user_type, $3::user_status, $4, $5, NOW(), NOW())
+        RETURNING 
+            id, company_id, user_type as "user_type: crate::models::user::UserType", user_status as "user_status: crate::models::user::UserStatus", username, 
+            password_hash, created_at, updated_at, deleted_at
         "#,
         company_id,
-        register_data.company_name,
-        now,
-        now
+        match register_data.user_type {
+            UserType::Admin => "admin",
+            UserType::Driver => "driver",
+        },
+        "active",
+        register_data.username,
+        password_hash
     )
-    .execute(&pool)
-    .await?;
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
-    // Hash password
-    let password_hash = hash(register_data.admin_password, DEFAULT_COST)?;
-
-    // Crear usuario admin
-    let user_id = Uuid::new_v4();
-
-    sqlx::query!(
-        r#"
-        INSERT INTO users (id, company_id, username, email, password_hash, user_type, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        "#,
-        user_id,
-        company_id,
-        register_data.admin_username,
-        register_data.admin_email,
-        password_hash,
-        UserType::Admin as UserType,
-        true,
-        now,
-        now
-    )
-    .execute(&pool)
-    .await?;
+    let new_user = User {
+        id: row.id,
+        company_id: row.company_id,
+        user_type: row.user_type,
+        user_status: row.user_status,
+        username: row.username,
+        password_hash: row.password_hash,
+        created_at: row.created_at.expect("created_at should not be null"),
+        updated_at: row.updated_at.expect("updated_at should not be null"),
+        deleted_at: row.deleted_at,
+    };
 
     // Generar JWT token
-    let secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalError("JWT_SECRET no configurado".to_string()))?;
+    let jwt_config = JwtConfig::from(config);
+    let access_token = generate_token(new_user.id, new_user.company_id, new_user.user_type, &jwt_config)?;
 
-    let expiration = (Utc::now() + Duration::hours(24)).timestamp() as usize;
-    let claims = Claims {
-        sub: user_id.to_string(),
-        company_id: company_id.to_string(),
-        exp: expiration,
-        iat: Utc::now().timestamp() as usize,
-    };
+    // Convertir a response
+    let user_response = UserResponse::from(new_user);
 
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_ref()),
-    )?;
-
-    // Crear respuesta
-    let user_info = UserInfo {
-        id: user_id.to_string(),
-        email: register_data.admin_email,
-        username: register_data.admin_username,
-        user_type: "Admin".to_string(),
-        company_id: company_id.to_string(),
-        company_name: register_data.company_name,
-    };
-
-    let response = AuthResponse {
-        token,
-        user: user_info,
+    let response = LoginResponse {
+        access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: jwt_config.expiration,
+        user: user_response,
     };
 
     Ok(Json(response))
 }
 
-/// Obtener información del usuario autenticado
+/// Handler para obtener información del usuario autenticado
 pub async fn me(
-    State(pool): State<PgPool>,
     Extension(user): Extension<AuthenticatedUser>,
-) -> AppResult<Json<UserInfo>> {
-    // Obtener usuario completo
-    let user_data = sqlx::query_as!(
-        crate::models::User,
+    State(app_state): State<AppState>,
+) -> AppResult<Json<UserResponse>> {
+    let pool = &app_state.pool;
+    // Buscar usuario completo
+    let row = sqlx::query!(
         r#"
-        SELECT id, company_id, username, email, password_hash, first_name, last_name, 
-               phone, user_type as "user_type: UserType", is_active, last_login, 
-               created_at, updated_at, deleted_at
+        SELECT 
+            id, company_id, user_type as "user_type: crate::models::user::UserType", user_status as "user_status: crate::models::user::UserStatus", username, 
+            password_hash, created_at, updated_at, deleted_at
         FROM users 
-        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
+        WHERE id = $1 
+        AND deleted_at IS NULL
         "#,
-        Uuid::parse_str(&user.user_id)?,
-        Uuid::parse_str(&user.company_id)?
+        user.user_id
     )
-    .fetch_one(&pool)
-    .await?;
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
-    // Obtener información de la empresa
-    let company = sqlx::query_as!(
-        crate::models::Company,
-        "SELECT * FROM companies WHERE id = $1 AND deleted_at IS NULL",
-        user_data.company_id
-    )
-    .fetch_one(&pool)
-    .await?;
-
-    // Crear respuesta
-    let user_info = UserInfo {
-        id: user_data.id.to_string(),
-        email: user_data.email,
-        username: user_data.username,
-        user_type: format!("{:?}", user_data.user_type),
-        company_id: user_data.company_id.to_string(),
-        company_name: company.name,
+    let user_data = User {
+        id: row.id,
+        company_id: row.company_id,
+        user_type: row.user_type,
+        user_status: row.user_status,
+        username: row.username,
+        password_hash: row.password_hash,
+        created_at: row.created_at.expect("created_at should not be null"),
+        updated_at: row.updated_at.expect("updated_at should not be null"),
+        deleted_at: row.deleted_at,
     };
 
-    Ok(Json(user_info))
+    let user_response = UserResponse::from(user_data);
+    Ok(Json(user_response))
+}
+
+/// Handler de refresh token
+pub async fn refresh_token(
+    State(_app_state): State<AppState>,
+    Json(refresh_data): Json<RefreshTokenRequest>,
+) -> AppResult<Json<RefreshTokenResponse>> {
+    // Validar datos de entrada
+    refresh_data.validate()
+        .map_err(AppError::Validation)?;
+
+    // En una implementación real, aquí verificarías el refresh token
+    // y generarías un nuevo access token
+    // Por ahora, retornamos un error indicando que no está implementado
+    
+    Err(AppError::Unauthorized("Refresh token no implementado aún".to_string()))
+}
+
+/// Handler de logout
+pub async fn logout() -> StatusCode {
+    // En una implementación real, aquí invalidarías el token
+    // Por ahora, solo retornamos OK
+    StatusCode::OK
 }

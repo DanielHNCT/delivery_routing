@@ -1,6 +1,7 @@
-//! Manejo de errores para la API
+//! Sistema de manejo de errores
 //! 
-//! Este módulo define todos los tipos de errores que pueden ocurrir en la API.
+//! Este módulo define todos los tipos de errores del sistema
+//! y su conversión a respuestas HTTP apropiadas.
 
 use axum::{
     http::StatusCode,
@@ -9,181 +10,292 @@ use axum::{
 };
 use serde_json::json;
 use thiserror::Error;
-use validator::ValidationErrors;
 
 /// Errores principales de la aplicación
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Error de validación: {0}")]
-    ValidationError(#[from] ValidationErrors),
-    
-    #[error("Error de base de datos: {0}")]
-    DatabaseError(String),
-    
-    #[error("Error de autenticación: {0}")]
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+
+    #[error("Validation error: {0}")]
+    Validation(#[from] validator::ValidationErrors),
+
+    #[error("Unauthorized: {0}")]
     Unauthorized(String),
-    
-    #[error("Recurso no encontrado: {0}")]
-    NotFound(String),
-    
-    #[error("Error interno del servidor: {0}")]
-    InternalError(String),
-    
-    #[error("Error de serialización: {0}")]
-    SerializationError(#[from] serde_json::Error),
-    
-    #[error("Error de JWT: {0}")]
-    JwtError(String),
-    
-    #[error("Error de hash de password: {0}")]
-    PasswordHashError(String),
-    
-    #[error("Error de permisos: {0}")]
+
+    #[error("Forbidden: {0}")]
     Forbidden(String),
-    
-    #[error("Error de conflicto: {0}")]
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Conflict: {0}")]
     Conflict(String),
+
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    #[error("Internal server error: {0}")]
+    Internal(String),
+
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded,
+
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
+    #[error("JWT error: {0}")]
+    Jwt(String),
+
+    #[error("Hash error: {0}")]
+    Hash(String),
+
+    #[error("External API error: {0}")]
+    ExternalApi(String),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
-impl AppError {
-    /// Obtener el código de estado HTTP correspondiente
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            AppError::NotFound(_) => StatusCode::NOT_FOUND,
-            AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::SerializationError(_) => StatusCode::BAD_REQUEST,
-            AppError::JwtError(_) => StatusCode::UNAUTHORIZED,
-            AppError::PasswordHashError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
-            AppError::Conflict(_) => StatusCode::CONFLICT,
-        }
-    }
-    
-    /// Obtener el mensaje de error para el usuario
-    pub fn user_message(&self) -> String {
-        match self {
-            AppError::ValidationError(errors) => {
-                let mut messages = Vec::new();
-                for (field, errors) in errors.field_errors() {
-                    for error in errors {
-                        if let Some(message) = &error.message {
-                            messages.push(format!("{}: {}", field, message));
-                        }
-                    }
-                }
-                if messages.is_empty() {
-                    "Datos de entrada inválidos".to_string()
-                } else {
-                    messages.join(", ")
-                }
-            }
-            AppError::DatabaseError(_) => "Error interno de la base de datos".to_string(),
-            AppError::Unauthorized(msg) => msg.clone(),
-            AppError::NotFound(msg) => msg.clone(),
-            AppError::InternalError(_) => "Error interno del servidor".to_string(),
-            AppError::SerializationError(_) => "Error en el formato de datos".to_string(),
-            AppError::JwtError(_) => "Token de autenticación inválido".to_string(),
-            AppError::PasswordHashError(_) => "Error interno del servidor".to_string(),
-            AppError::Forbidden(msg) => msg.clone(),
-            AppError::Conflict(msg) => msg.clone(),
-        }
-    }
-    
-    /// Obtener el código de error interno
-    pub fn error_code(&self) -> &'static str {
-        match self {
-            AppError::ValidationError(_) => "VALIDATION_ERROR",
-            AppError::DatabaseError(_) => "DATABASE_ERROR",
-            AppError::Unauthorized(_) => "UNAUTHORIZED",
-            AppError::NotFound(_) => "NOT_FOUND",
-            AppError::InternalError(_) => "INTERNAL_ERROR",
-            AppError::SerializationError(_) => "SERIALIZATION_ERROR",
-            AppError::JwtError(_) => "JWT_ERROR",
-            AppError::PasswordHashError(_) => "PASSWORD_HASH_ERROR",
-            AppError::Forbidden(_) => "FORBIDDEN",
-            AppError::Conflict(_) => "CONFLICT",
-        }
-    }
+/// Respuesta de error para la API
+#[derive(Debug, serde::Serialize)]
+struct ErrorResponse {
+    error: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status_code = self.status_code();
-        let error_response = json!({
-            "error": {
-                "code": self.error_code(),
-                "message": self.user_message(),
-                "status": status_code.as_u16(),
-                "timestamp": chrono::Utc::now().to_rfc3339()
+        let (status, error_response) = match self {
+            AppError::Database(e) => {
+                eprintln!("Database error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        error: "Database Error".to_string(),
+                        message: "An error occurred while accessing the database".to_string(),
+                        details: Some(json!({ "sql_error": e.to_string() })),
+                        code: Some("DB_ERROR".to_string()),
+                    },
+                )
             }
-        });
-        
-        (status_code, Json(error_response)).into_response()
+
+            AppError::Validation(e) => {
+                eprintln!("Validation error: {}", e);
+                (
+                    StatusCode::BAD_REQUEST,
+                    ErrorResponse {
+                        error: "Validation Error".to_string(),
+                        message: "The provided data is invalid".to_string(),
+                        details: Some(json!(e)),
+                        code: Some("VALIDATION_ERROR".to_string()),
+                    },
+                )
+            }
+
+            AppError::Unauthorized(msg) => {
+                eprintln!("Unauthorized access: {}", msg);
+                (
+                    StatusCode::UNAUTHORIZED,
+                    ErrorResponse {
+                        error: "Unauthorized".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("UNAUTHORIZED".to_string()),
+                    },
+                )
+            }
+
+            AppError::Forbidden(msg) => {
+                eprintln!("Forbidden access: {}", msg);
+                (
+                    StatusCode::FORBIDDEN,
+                    ErrorResponse {
+                        error: "Forbidden".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("FORBIDDEN".to_string()),
+                    },
+                )
+            }
+
+            AppError::NotFound(msg) => {
+                eprintln!("Resource not found: {}", msg);
+                (
+                    StatusCode::NOT_FOUND,
+                    ErrorResponse {
+                        error: "Not Found".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("NOT_FOUND".to_string()),
+                    },
+                )
+            }
+
+            AppError::Conflict(msg) => {
+                eprintln!("Conflict: {}", msg);
+                (
+                    StatusCode::CONFLICT,
+                    ErrorResponse {
+                        error: "Conflict".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("CONFLICT".to_string()),
+                    },
+                )
+            }
+
+            AppError::BadRequest(msg) => {
+                eprintln!("Bad request: {}", msg);
+                (
+                    StatusCode::BAD_REQUEST,
+                    ErrorResponse {
+                        error: "Bad Request".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("BAD_REQUEST".to_string()),
+                    },
+                )
+            }
+
+            AppError::Internal(msg) => {
+                eprintln!("Internal error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        error: "Internal Server Error".to_string(),
+                        message: "An unexpected error occurred".to_string(),
+                        details: Some(json!({ "internal_error": msg })),
+                        code: Some("INTERNAL_ERROR".to_string()),
+                    },
+                )
+            }
+
+            AppError::RateLimitExceeded => {
+                eprintln!("Rate limit exceeded");
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    ErrorResponse {
+                        error: "Rate Limit Exceeded".to_string(),
+                        message: "Too many requests. Please try again later".to_string(),
+                        details: None,
+                        code: Some("RATE_LIMIT_EXCEEDED".to_string()),
+                    },
+                )
+            }
+
+            AppError::ServiceUnavailable(msg) => {
+                eprintln!("Service unavailable: {}", msg);
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ErrorResponse {
+                        error: "Service Unavailable".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("SERVICE_UNAVAILABLE".to_string()),
+                    },
+                )
+            }
+
+            AppError::Jwt(msg) => {
+                eprintln!("JWT error: {}", msg);
+                (
+                    StatusCode::UNAUTHORIZED,
+                    ErrorResponse {
+                        error: "JWT Error".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("JWT_ERROR".to_string()),
+                    },
+                )
+            }
+
+            AppError::Hash(msg) => {
+                eprintln!("Hash error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        error: "Hash Error".to_string(),
+                        message: "An error occurred while processing credentials".to_string(),
+                        details: Some(json!({ "hash_error": msg })),
+                        code: Some("HASH_ERROR".to_string()),
+                    },
+                )
+            }
+
+            AppError::ExternalApi(msg) => {
+                eprintln!("External API error: {}", msg);
+                (
+                    StatusCode::BAD_GATEWAY,
+                    ErrorResponse {
+                        error: "External API Error".to_string(),
+                        message: "An error occurred while communicating with external service".to_string(),
+                        details: Some(json!({ "external_api_error": msg })),
+                        code: Some("EXTERNAL_API_ERROR".to_string()),
+                    },
+                )
+            }
+
+            AppError::NotImplemented(msg) => {
+                eprintln!("Not implemented: {}", msg);
+                (
+                    StatusCode::NOT_IMPLEMENTED,
+                    ErrorResponse {
+                        error: "Not Implemented".to_string(),
+                        message: msg,
+                        details: None,
+                        code: Some("NOT_IMPLEMENTED".to_string()),
+                    },
+                )
+            }
+        };
+
+        (status, Json(error_response)).into_response()
     }
 }
 
-/// Result type personalizado para la aplicación
+/// Resultado tipado para operaciones que pueden fallar
 pub type AppResult<T> = Result<T, AppError>;
 
-/// Helper para convertir errores de SQLx
-impl From<sqlx::Error> for AppError {
-    fn from(err: sqlx::Error) -> Self {
-        match err {
-            sqlx::Error::RowNotFound => AppError::NotFound("Recurso no encontrado".to_string()),
-            sqlx::Error::Database(db_err) => {
-                if let Some(code) = db_err.code() {
-                    match code.as_ref() {
-                        "23505" => AppError::Conflict("Recurso ya existe".to_string()),
-                        "23503" => AppError::Conflict("Referencia inválida".to_string()),
-                        _ => AppError::DatabaseError(db_err.message().to_string()),
-                    }
-                } else {
-                    AppError::DatabaseError(db_err.message().to_string())
-                }
-            }
-            _ => AppError::DatabaseError(err.to_string()),
-        }
-    }
-}
-
-/// Helper para convertir errores de JWT
-impl From<jsonwebtoken::errors::Error> for AppError {
-    fn from(err: jsonwebtoken::errors::Error) -> Self {
-        AppError::JwtError(err.to_string())
-    }
-}
-
-/// Helper para convertir errores de bcrypt
-impl From<bcrypt::BcryptError> for AppError {
-    fn from(err: bcrypt::BcryptError) -> Self {
-        AppError::PasswordHashError(err.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Función helper para crear errores de validación
+pub fn validation_error(field: &'static str, message: &'static str) -> AppError {
     use validator::ValidationError;
+    
+    let mut error = ValidationError::new("custom");
+    error.add_param("field".into(), &field);
+    error.add_param("message".into(), &message);
+    
+    let mut errors = validator::ValidationErrors::new();
+    errors.add(field, error);
+    
+    AppError::Validation(errors)
+}
 
-    #[test]
-    fn test_app_error_status_codes() {
-        assert_eq!(AppError::ValidationError(ValidationErrors::new()).status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(AppError::Unauthorized("test".to_string()).status_code(), StatusCode::UNAUTHORIZED);
-        assert_eq!(AppError::NotFound("test".to_string()).status_code(), StatusCode::NOT_FOUND);
-    }
+/// Función helper para crear errores de recurso no encontrado
+pub fn not_found_error(resource: &str, id: &str) -> AppError {
+    AppError::NotFound(format!("{} with id '{}' not found", resource, id))
+}
 
-    #[test]
-    fn test_app_error_user_messages() {
-        assert_eq!(
-            AppError::Unauthorized("Acceso denegado".to_string()).user_message(),
-            "Acceso denegado"
-        );
-        assert_eq!(
-            AppError::NotFound("Usuario no encontrado".to_string()).user_message(),
-            "Usuario no encontrado"
-        );
-    }
+/// Función helper para crear errores de conflicto
+pub fn conflict_error(resource: &str, field: &str, value: &str) -> AppError {
+    AppError::Conflict(format!("{} with {} '{}' already exists", resource, field, value))
+}
+
+/// Función helper para crear errores de acceso prohibido
+pub fn forbidden_error(operation: &str, reason: &str) -> AppError {
+    AppError::Forbidden(format!("Cannot {}: {}", operation, reason))
+}
+
+/// Función helper para crear errores de solicitud incorrecta
+pub fn bad_request_error(message: &str) -> AppError {
+    AppError::BadRequest(message.to_string())
+}
+
+/// Función helper para crear errores internos
+pub fn internal_error(message: &str) -> AppError {
+    AppError::Internal(message.to_string())
 }

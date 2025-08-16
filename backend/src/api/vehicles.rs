@@ -1,273 +1,345 @@
-//! Endpoints de Vehicles
+//! Handlers de Vehicles
 //! 
-//! Este módulo contiene los endpoints para gestión de vehículos.
+//! Este módulo maneja las operaciones CRUD para vehículos.
 
 use axum::{
-    extract::{Path, Extension},
+    extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    models::{Vehicle, CreateVehicle, UpdateVehicle, VehicleStatus},
+    models::vehicle::{
+        Vehicle, VehicleStatus, VehicleResponse, VehicleListResponse,
+        CreateVehicleRequest, UpdateVehicleRequest, VehicleFilters,
+    },
     utils::errors::{AppError, AppResult},
     middleware::auth::AuthenticatedUser,
 };
 
-/// Listar vehículos de la empresa
-pub async fn list_vehicles(
-    Extension(pool): Extension<PgPool>,
-    Extension(user): Extension<AuthenticatedUser>,
-) -> AppResult<Json<Vec<Vehicle>>> {
-    let company_uuid = Uuid::parse_str(&user.company_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
+/// Obtener todos los vehículos con filtros
+pub async fn get_vehicles(
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    State(state): State<crate::state::AppState>,
+    Query(filters): Query<VehicleFilters>,
+) -> AppResult<Json<Vec<VehicleListResponse>>> {
+    let limit = filters.limit.unwrap_or(50).min(100);
+    let offset = filters.offset.unwrap_or(0);
 
-    let vehicles = sqlx::query_as!(
-        Vehicle,
+    let rows = sqlx::query!(
         r#"
-        SELECT id, company_id, name, license_plate, vehicle_type, capacity, capacity_unit, 
-               fuel_type, fuel_consumption, driver_id, status as "status: VehicleStatus", 
-               purchase_date, last_maintenance, notes, created_at, updated_at, deleted_at
+        SELECT 
+            id, company_id, license_plate, brand, model, year, color,
+            vehicle_status as "vehicle_status: String", current_mileage, fuel_type,
+            fuel_capacity, weekly_fuel_allocation, total_damage_cost, 
+            damage_incidents_count, vin, engine_size, transmission,
+            created_at, updated_at, deleted_at
         FROM vehicles 
-        WHERE company_id = $1 AND deleted_at IS NULL 
-        ORDER BY name
+        WHERE company_id = $1 
+        AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
         "#,
-        company_uuid
+        user.company_id,
+        limit,
+        offset
     )
-    .fetch_all(&pool)
-    .await?;
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    let vehicles: Vec<VehicleListResponse> = rows
+        .into_iter()
+        .map(|row| {
+            let vehicle = Vehicle {
+                id: row.id,
+                company_id: row.company_id,
+                license_plate: row.license_plate,
+                brand: row.brand,
+                model: row.model,
+                year: row.year,
+                color: row.color,
+                vehicle_status: match row.vehicle_status.as_str() {
+                    "active" => VehicleStatus::Active,
+                    "maintenance" => VehicleStatus::Maintenance,
+                    "out_of_service" => VehicleStatus::OutOfService,
+                    "retired" => VehicleStatus::Retired,
+                    _ => VehicleStatus::Active,
+                },
+                current_mileage: row.current_mileage,
+                fuel_type: row.fuel_type,
+                fuel_capacity: row.fuel_capacity,
+                weekly_fuel_allocation: row.weekly_fuel_allocation,
+                total_damage_cost: row.total_damage_cost,
+                damage_incidents_count: row.damage_incidents_count,
+                vin: row.vin,
+                engine_size: row.engine_size,
+                transmission: row.transmission,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                deleted_at: row.deleted_at,
+            };
+            VehicleListResponse::from(vehicle)
+        })
+        .collect();
 
     Ok(Json(vehicles))
 }
 
-/// Crear nuevo vehículo
+/// Obtener un vehículo por ID
+pub async fn get_vehicle(
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    State(state): State<crate::state::AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<VehicleResponse>> {
+    let row = sqlx::query!(
+        r#"
+        SELECT 
+            id, company_id, license_plate, brand, model, year, color,
+            vehicle_status as "vehicle_status: String", current_mileage, fuel_type,
+            fuel_capacity, weekly_fuel_allocation, total_damage_cost, 
+            damage_incidents_count, vin, engine_size, transmission,
+            created_at, updated_at, deleted_at
+        FROM vehicles 
+        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
+        "#,
+        id,
+        user.company_id
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound("Vehículo no encontrado".to_string()),
+        _ => AppError::Database(e),
+    })?;
+
+    let vehicle = Vehicle {
+        id: row.id,
+        company_id: row.company_id,
+        license_plate: row.license_plate,
+        brand: row.brand,
+        model: row.model,
+        year: row.year,
+        color: row.color,
+        vehicle_status: match row.vehicle_status.as_str() {
+            "active" => VehicleStatus::Active,
+            "maintenance" => VehicleStatus::Maintenance,
+            "out_of_service" => VehicleStatus::OutOfService,
+            "retired" => VehicleStatus::Retired,
+            _ => VehicleStatus::Active,
+        },
+        current_mileage: row.current_mileage,
+        fuel_type: row.fuel_type,
+        fuel_capacity: row.fuel_capacity,
+        weekly_fuel_allocation: row.weekly_fuel_allocation,
+        total_damage_cost: row.total_damage_cost,
+        damage_incidents_count: row.damage_incidents_count,
+        vin: row.vin,
+        engine_size: row.engine_size,
+        transmission: row.transmission,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    };
+
+    Ok(Json(VehicleResponse::from(vehicle)))
+}
+
+/// Crear un nuevo vehículo
 pub async fn create_vehicle(
-    Extension(pool): Extension<PgPool>,
-    Extension(user): Extension<AuthenticatedUser>,
-    Json(vehicle_data): Json<CreateVehicle>,
-) -> AppResult<Json<Vehicle>> {
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    State(state): State<crate::state::AppState>,
+    Json(vehicle_data): Json<CreateVehicleRequest>,
+) -> AppResult<Json<VehicleResponse>> {
     // Validar datos de entrada
     vehicle_data.validate()
-        .map_err(AppError::ValidationError)?;
+        .map_err(AppError::Validation)?;
 
-    let company_uuid = Uuid::parse_str(&user.company_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
-
-    // Verificar que la matrícula no esté en uso en la empresa
-    if let Some(license_plate) = &vehicle_data.license_plate {
-        let existing_vehicle = sqlx::query!(
-            "SELECT id FROM vehicles WHERE license_plate = $1 AND company_id = $2 AND deleted_at IS NULL",
-            license_plate,
-            company_uuid
-        )
-        .fetch_optional(&pool)
-        .await?;
-
-        if existing_vehicle.is_some() {
-            return Err(AppError::Conflict("Ya existe un vehículo con esa matrícula".to_string()));
-        }
-    }
-
-    // Crear vehículo
-    let vehicle_id = Uuid::new_v4();
-    let now = chrono::Utc::now();
-
-    let vehicle = sqlx::query_as!(
-        Vehicle,
+    let row = sqlx::query!(
         r#"
         INSERT INTO vehicles (
-            id, company_id, name, license_plate, vehicle_type, capacity, capacity_unit, 
-            fuel_type, fuel_consumption, driver_id, status, purchase_date, notes, 
-            created_at, updated_at
+            company_id, license_plate, brand, model, year, color,
+            vehicle_status, current_mileage, fuel_type, fuel_capacity,
+            weekly_fuel_allocation, total_damage_cost, damage_incidents_count,
+            vin, engine_size, transmission, created_at, updated_at
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7::vehicle_status, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW()
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        RETURNING *
+        RETURNING 
+            id, company_id, license_plate, brand, model, year, color,
+            vehicle_status as "vehicle_status: crate::models::vehicle::VehicleStatus", current_mileage, fuel_type,
+            fuel_capacity, weekly_fuel_allocation, total_damage_cost, 
+            damage_incidents_count, vin, engine_size, transmission,
+            created_at, updated_at, deleted_at
         "#,
-        vehicle_id,
-        company_uuid,
-        vehicle_data.name,
+        user.company_id,
         vehicle_data.license_plate,
-        vehicle_data.vehicle_type,
-        vehicle_data.capacity,
-        vehicle_data.capacity_unit,
+        vehicle_data.brand,
+        vehicle_data.model,
+        vehicle_data.year,
+        vehicle_data.color,
+        "active",
+        rust_decimal::Decimal::new(0, 0), // current_mileage = 0
         vehicle_data.fuel_type,
-        vehicle_data.fuel_consumption,
-        vehicle_data.driver_id,
-        vehicle_data.status as VehicleStatus,
-        vehicle_data.purchase_date,
-        vehicle_data.notes,
-        now,
-        now
+        vehicle_data.fuel_capacity,
+        vehicle_data.weekly_fuel_allocation,
+        rust_decimal::Decimal::new(0, 0), // total_damage_cost = 0
+        0, // damage_incidents_count = 0
+        vehicle_data.vin,
+        vehicle_data.engine_size,
+        vehicle_data.transmission
     )
-    .fetch_one(&pool)
-    .await?;
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
-    Ok(Json(vehicle))
+    let vehicle = Vehicle {
+        id: row.id,
+        company_id: row.company_id,
+        license_plate: row.license_plate,
+        brand: row.brand,
+        model: row.model,
+        year: row.year,
+        color: row.color,
+        vehicle_status: row.vehicle_status,
+        current_mileage: row.current_mileage,
+        fuel_type: row.fuel_type,
+        fuel_capacity: row.fuel_capacity,
+        weekly_fuel_allocation: row.weekly_fuel_allocation,
+        total_damage_cost: row.total_damage_cost,
+        damage_incidents_count: row.damage_incidents_count,
+        vin: row.vin,
+        engine_size: row.engine_size,
+        transmission: row.transmission,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    };
+
+    Ok(Json(VehicleResponse::from(vehicle)))
 }
 
-/// Obtener vehículo por ID
-pub async fn get_vehicle(
-    Extension(pool): Extension<PgPool>,
-    Extension(user): Extension<AuthenticatedUser>,
-    Path(vehicle_id): Path<String>,
-) -> AppResult<Json<Vehicle>> {
-    let company_uuid = Uuid::parse_str(&user.company_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
-    
-    let target_vehicle_uuid = Uuid::parse_str(&vehicle_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
-
-    let vehicle = sqlx::query_as!(
-        Vehicle,
-        r#"
-        SELECT id, company_id, name, license_plate, vehicle_type, capacity, capacity_unit, 
-               fuel_type, fuel_consumption, driver_id, status as "status: VehicleStatus", 
-               purchase_date, last_maintenance, notes, created_at, updated_at, deleted_at
-        FROM vehicles 
-        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-        "#,
-        target_vehicle_uuid,
-        company_uuid
-    )
-    .fetch_one(&pool)
-    .await?;
-
-    Ok(Json(vehicle))
-}
-
-/// Actualizar vehículo
+/// Actualizar un vehículo existente
 pub async fn update_vehicle(
-    Extension(pool): Extension<PgPool>,
-    Extension(user): Extension<AuthenticatedUser>,
-    Path(vehicle_id): Path<String>,
-    Json(update_data): Json<UpdateVehicle>,
-) -> AppResult<Json<Vehicle>> {
-    let company_uuid = Uuid::parse_str(&user.company_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
-    
-    let target_vehicle_uuid = Uuid::parse_str(&vehicle_id)
-        .map_err(|_| AppError::ValidationError(validator::ValidationErrors::new()))?;
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    State(state): State<crate::state::AppState>,
+    Path(id): Path<Uuid>,
+    Json(vehicle_data): Json<UpdateVehicleRequest>,
+) -> AppResult<Json<VehicleResponse>> {
+    // Validar datos de entrada
+    vehicle_data.validate()
+        .map_err(AppError::Validation)?;
 
     // Verificar que el vehículo existe y pertenece a la empresa
-    let existing_vehicle = sqlx::query_as!(
-        Vehicle,
+    let _existing = sqlx::query!(
+        "SELECT id FROM vehicles WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
+        id,
+        user.company_id
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound("Vehículo no encontrado".to_string()),
+        _ => AppError::Database(e),
+    })?;
+
+    let row = sqlx::query!(
         r#"
-        SELECT id, company_id, name, license_plate, vehicle_type, capacity, capacity_unit, 
-               fuel_type, fuel_consumption, driver_id, status as "status: VehicleStatus", 
-               purchase_date, last_maintenance, notes, created_at, updated_at, deleted_at
-        FROM vehicles 
+        UPDATE vehicles SET
+            license_plate = COALESCE($2, license_plate),
+            brand = COALESCE($3, brand),
+            model = COALESCE($4, model),
+            year = COALESCE($5, year),
+            color = COALESCE($6, color),
+            vehicle_status = COALESCE($7::vehicle_status, vehicle_status),
+            current_mileage = COALESCE($8, current_mileage),
+            fuel_type = COALESCE($9, fuel_type),
+            fuel_capacity = COALESCE($10, fuel_capacity),
+            weekly_fuel_allocation = COALESCE($11, weekly_fuel_allocation),
+            vin = COALESCE($12, vin),
+            engine_size = COALESCE($13, engine_size),
+            transmission = COALESCE($14, transmission),
+            updated_at = NOW()
+        WHERE id = $1 AND company_id = $15
+        RETURNING 
+            id, company_id, license_plate, brand, model, year, color,
+            vehicle_status as "vehicle_status: crate::models::vehicle::VehicleStatus", current_mileage, fuel_type,
+            fuel_capacity, weekly_fuel_allocation, total_damage_cost, 
+            damage_incidents_count, vin, engine_size, transmission,
+            created_at, updated_at, deleted_at
+        "#,
+        id,
+        vehicle_data.license_plate,
+        vehicle_data.brand,
+        vehicle_data.model,
+        vehicle_data.year,
+        vehicle_data.color,
+        vehicle_data.vehicle_status,
+        vehicle_data.current_mileage,
+        vehicle_data.fuel_type,
+        vehicle_data.fuel_capacity,
+        vehicle_data.weekly_fuel_allocation,
+        vehicle_data.vin,
+        vehicle_data.engine_size,
+        vehicle_data.transmission,
+        user.company_id
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
+
+    let vehicle = Vehicle {
+        id: row.id,
+        company_id: row.company_id,
+        license_plate: row.license_plate,
+        brand: row.brand,
+        model: row.model,
+        year: row.year,
+        color: row.color,
+        vehicle_status: row.vehicle_status,
+        current_mileage: row.current_mileage,
+        fuel_type: row.fuel_type,
+        fuel_capacity: row.fuel_capacity,
+        weekly_fuel_allocation: row.weekly_fuel_allocation,
+        total_damage_cost: row.total_damage_cost,
+        damage_incidents_count: row.damage_incidents_count,
+        vin: row.vin,
+        engine_size: row.engine_size,
+        transmission: row.transmission,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    };
+
+    Ok(Json(VehicleResponse::from(vehicle)))
+}
+
+/// Eliminar un vehículo (soft delete)
+pub async fn delete_vehicle(
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    State(state): State<crate::state::AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE vehicles 
+        SET deleted_at = NOW(), updated_at = NOW()
         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
         "#,
-        target_vehicle_uuid,
-        company_uuid
+        id,
+        user.company_id
     )
-    .fetch_one(&pool)
-    .await?;
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError::Database(e))?;
 
-    // Construir query de actualización
-    let mut query_parts = Vec::new();
-    let mut params: Vec<Box<dyn sqlx::Encode<'_, sqlx::Postgres> + Send + Sync>> = Vec::new();
-    let mut param_count = 1;
-
-    if let Some(name) = update_data.name {
-        query_parts.push(format!("name = ${}", param_count));
-        params.push(Box::new(name));
-        param_count += 1;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Vehículo no encontrado".to_string()));
     }
 
-    if let Some(license_plate) = update_data.license_plate {
-        query_parts.push(format!("license_plate = ${}", param_count));
-        params.push(Box::new(license_plate));
-        param_count += 1;
-    }
-
-    if let Some(vehicle_type) = update_data.vehicle_type {
-        query_parts.push(format!("vehicle_type = ${}", param_count));
-        params.push(Box::new(vehicle_type));
-        param_count += 1;
-    }
-
-    if let Some(capacity) = update_data.capacity {
-        query_parts.push(format!("capacity = ${}", param_count));
-        params.push(Box::new(capacity));
-        param_count += 1;
-    }
-
-    if let Some(capacity_unit) = update_data.capacity_unit {
-        query_parts.push(format!("capacity_unit = ${}", param_count));
-        params.push(Box::new(capacity_unit));
-        param_count += 1;
-    }
-
-    if let Some(fuel_type) = update_data.fuel_type {
-        query_parts.push(format!("fuel_type = ${}", param_count));
-        params.push(Box::new(fuel_type));
-        param_count += 1;
-    }
-
-    if let Some(fuel_consumption) = update_data.fuel_consumption {
-        query_parts.push(format!("fuel_consumption = ${}", param_count));
-        params.push(Box::new(fuel_consumption));
-        param_count += 1;
-    }
-
-    if let Some(driver_id) = update_data.driver_id {
-        query_parts.push(format!("driver_id = ${}", param_count));
-        params.push(Box::new(driver_id));
-        param_count += 1;
-    }
-
-    if let Some(status) = update_data.status {
-        query_parts.push(format!("status = ${}", param_count));
-        params.push(Box::new(status as VehicleStatus));
-        param_count += 1;
-    }
-
-    if let Some(purchase_date) = update_data.purchase_date {
-        query_parts.push(format!("purchase_date = ${}", param_count));
-        params.push(Box::new(purchase_date));
-        param_count += 1;
-    }
-
-    if let Some(last_maintenance) = update_data.last_maintenance {
-        query_parts.push(format!("last_maintenance = ${}", param_count));
-        params.push(Box::new(last_maintenance));
-        param_count += 1;
-    }
-
-    if let Some(notes) = update_data.notes {
-        query_parts.push(format!("notes = ${}", param_count));
-        params.push(Box::new(notes));
-        param_count += 1;
-    }
-
-    // Agregar updated_at
-    query_parts.push(format!("updated_at = ${}", param_count));
-    params.push(Box::new(chrono::Utc::now()));
-
-    if query_parts.is_empty() {
-        return Ok(Json(existing_vehicle));
-    }
-
-    // Construir query final
-    let query = format!(
-        "UPDATE vehicles SET {} WHERE id = ${} AND company_id = ${} AND deleted_at IS NULL RETURNING *",
-        query_parts.join(", "),
-        param_count,
-        param_count + 1
-    );
-
-    // Ejecutar query
-    let vehicle = sqlx::query_as!(
-        Vehicle,
-        &query,
-        target_vehicle_uuid,
-        company_uuid
-    )
-    .fetch_one(&pool)
-    .await?;
-
-    Ok(Json(vehicle))
+    Ok(StatusCode::NO_CONTENT)
 }

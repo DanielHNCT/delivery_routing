@@ -196,3 +196,4 @@ CREATE TRIGGER calculate_tournee_distance_trigger
 CREATE TRIGGER update_document_status_trigger
     BEFORE INSERT OR UPDATE ON vehicle_documents
     FOR EACH ROW EXECUTE FUNCTION update_document_status();
+

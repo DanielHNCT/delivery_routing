@@ -1,9 +1,12 @@
-//! Utilidades para la API
+//! Utilidades del sistema
 //! 
-//! Este módulo contiene funciones de validación, manejo de errores y otras utilidades.
+//! Este módulo contiene utilidades para manejo de errores, validación,
+//! JWT y otras funcionalidades comunes.
 
-pub mod validation;
 pub mod errors;
+pub mod validation;
+pub mod jwt;
 
-pub use validation::*;
 pub use errors::*;
+pub use validation::*;
+pub use jwt::*;

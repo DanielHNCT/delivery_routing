@@ -71,3 +71,9 @@ rustup-init.exe
 
 # Local development
 .local/
+
+# SQLx database files (contain sensitive data)
+.sqlxrc
+sqlx-data.json
+*.sqlx-data.json
+.sqlx/

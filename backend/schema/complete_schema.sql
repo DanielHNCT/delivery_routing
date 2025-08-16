@@ -565,3 +565,4 @@ CREATE TABLE sync_log (
     -- Metadatos
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+

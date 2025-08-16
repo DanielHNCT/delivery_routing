@@ -1,16 +1,23 @@
-//! Delivery Route Optimizer API
+//! Biblioteca principal para el sistema de optimización de rutas de entrega
 //! 
-//! API REST completa para optimización de rutas de entrega con soporte multi-tenant
-//! y integración con PostgreSQL + PostGIS.
+//! Esta biblioteca proporciona una API REST completa para gestionar
+//! empresas, usuarios, vehículos, tournées y paquetes con optimización
+//! de rutas y integración con APIs externas.
 
 pub mod api;
-pub mod middleware;
+pub mod config;
 pub mod models;
-pub mod database;
+pub mod middleware;
+pub mod services;
 pub mod utils;
-pub mod external_models;
-pub mod external_utils;
+pub mod routes;
+pub mod state;
 
-// Re-export common types for convenience
-pub use database::connection::DatabasePool;
-pub use utils::errors::AppError;
+pub use api::*;
+pub use config::*;
+pub use models::*;
+pub use middleware::*;
+pub use services::*;
+pub use utils::*;
+pub use routes::*;
+pub use state::*;
