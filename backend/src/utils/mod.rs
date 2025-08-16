@@ -6,7 +6,9 @@
 pub mod errors;
 pub mod validation;
 pub mod jwt;
+pub mod encoding;
 
 pub use errors::*;
 pub use validation::*;
 pub use jwt::*;
+pub use encoding::*;

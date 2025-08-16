@@ -167,7 +167,7 @@ pub async fn create_vehicle(
             weekly_fuel_allocation, total_damage_cost, damage_incidents_count,
             vin, engine_size, transmission, created_at, updated_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7::vehicle_status, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW()
+            $1, $2, $3, $4, $5, $6, ($7::text)::vehicle_status, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW()
         )
         RETURNING 
             id, company_id, license_plate, brand, model, year, color,
@@ -255,7 +255,7 @@ pub async fn update_vehicle(
             model = COALESCE($4, model),
             year = COALESCE($5, year),
             color = COALESCE($6, color),
-            vehicle_status = COALESCE($7::vehicle_status, vehicle_status),
+            vehicle_status = COALESCE(($7::text)::vehicle_status, vehicle_status),
             current_mileage = COALESCE($8, current_mileage),
             fuel_type = COALESCE($9, fuel_type),
             fuel_capacity = COALESCE($10, fuel_capacity),

@@ -201,7 +201,7 @@ pub async fn create_tournee(
             estimated_duration_minutes, tournee_origin, external_tournee_id,
             created_at, updated_at
         ) VALUES (
-            $1, $2, $3, CURRENT_DATE, $4, $5, $6, $7::tournee_status, $8, $9, $10, $11, NOW(), NOW()
+            $1, $2, $3, CURRENT_DATE, $4, $5, $6, ($7::text)::tournee_status, $8, $9, $10, $11, NOW(), NOW()
         )
         RETURNING 
             id, company_id, driver_id, vehicle_id, tournee_date, tournee_number,

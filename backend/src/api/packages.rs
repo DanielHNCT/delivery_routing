@@ -162,7 +162,7 @@ pub async fn get_package(
         delivery_status: row.delivery_status,
         delivery_date: row.delivery_date,
         delivery_time: row.delivery_time,
-        delivery_attempts: row.delivery_attempts,
+        delivery_attempts: row.delivery_attempts.expect("delivery_attempts should not be null"),
         recipient_name: row.recipient_name,
         recipient_phone: row.recipient_phone,
         delivery_address: row.delivery_address,
@@ -171,7 +171,7 @@ pub async fn get_package(
         failure_notes: row.failure_notes,
         reschedule_date: row.reschedule_date,
         delivery_photo: row.delivery_photo,
-        signature_required: row.signature_required,
+        signature_required: row.signature_required.expect("signature_required should not be null"),
         signature_image: row.signature_image,
         signature_photo: row.signature_photo,
         delivery_coordinates: None,
@@ -208,7 +208,7 @@ pub async fn create_package(
             recipient_name, recipient_phone, delivery_address, delivery_instructions,
             signature_required, created_at, updated_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::delivery_status, $11, $12, $13, $14, $15, $16, NOW(), NOW()
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, ($10::text)::delivery_status, $11, $12, $13, $14, $15, $16, NOW(), NOW()
         )
         RETURNING 
             id, company_id, tournee_id, tracking_number, external_tracking_number,
@@ -257,7 +257,7 @@ pub async fn create_package(
         delivery_status: row.delivery_status,
         delivery_date: row.delivery_date,
         delivery_time: row.delivery_time,
-        delivery_attempts: row.delivery_attempts,
+        delivery_attempts: row.delivery_attempts.expect("delivery_attempts should not be null"),
         recipient_name: row.recipient_name,
         recipient_phone: row.recipient_phone,
         delivery_address: row.delivery_address,
@@ -266,7 +266,7 @@ pub async fn create_package(
         failure_notes: row.failure_notes,
         reschedule_date: row.reschedule_date,
         delivery_photo: row.delivery_photo,
-        signature_required: row.signature_required,
+        signature_required: row.signature_required.expect("signature_required should not be null"),
         signature_image: row.signature_image,
         signature_photo: row.signature_photo,
         delivery_coordinates: None,
@@ -348,7 +348,7 @@ pub async fn mark_delivered(
         delivery_status: row.delivery_status,
         delivery_date: row.delivery_date,
         delivery_time: row.delivery_time,
-        delivery_attempts: row.delivery_attempts,
+        delivery_attempts: row.delivery_attempts.expect("delivery_attempts should not be null"),
         recipient_name: row.recipient_name,
         recipient_phone: row.recipient_phone,
         delivery_address: row.delivery_address,
@@ -357,7 +357,7 @@ pub async fn mark_delivered(
         failure_notes: row.failure_notes,
         reschedule_date: row.reschedule_date,
         delivery_photo: row.delivery_photo,
-        signature_required: row.signature_required,
+        signature_required: row.signature_required.expect("signature_required should not be null"),
         signature_image: row.signature_image,
         signature_photo: row.signature_photo,
         delivery_coordinates: None,
@@ -405,7 +405,7 @@ pub async fn mark_failed(
         r#"
         UPDATE packages SET
             delivery_status = 'failed',
-            failure_reason = $2::delivery_failure_reason,
+            failure_reason = ($2::text)::delivery_failure_reason,
             failure_notes = $3,
             reschedule_date = $4,
             driver_notes = $5,
@@ -452,7 +452,7 @@ pub async fn mark_failed(
         delivery_status: row.delivery_status,
         delivery_date: row.delivery_date,
         delivery_time: row.delivery_time,
-        delivery_attempts: row.delivery_attempts,
+        delivery_attempts: row.delivery_attempts.expect("delivery_attempts should not be null"),
         recipient_name: row.recipient_name,
         recipient_phone: row.recipient_phone,
         delivery_address: row.delivery_address,
@@ -461,7 +461,7 @@ pub async fn mark_failed(
         failure_notes: row.failure_notes,
         reschedule_date: row.reschedule_date,
         delivery_photo: row.delivery_photo,
-        signature_required: row.signature_required,
+        signature_required: row.signature_required.expect("signature_required should not be null"),
         signature_image: row.signature_image,
         signature_photo: row.signature_photo,
         delivery_coordinates: None,

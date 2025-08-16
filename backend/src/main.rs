@@ -1,14 +1,18 @@
-mod models;
-mod client;
-mod utils;
+mod api;
 mod config;
-
-// Nueva API REST
-mod lib;
+mod models;
+mod middleware;
+mod services;
+mod utils;
+mod routes;
+mod state;
+mod client;
+mod external_models;
+mod database;
 
 use anyhow::Result;
 use axum::{
-    Extension, Router, Server,
+    Extension, Router,
     http::Method,
 };
 use std::net::SocketAddr;
@@ -16,6 +20,15 @@ use std::sync::Arc;
 use tokio::signal;
 use tracing::{info, error};
 use dotenvy::dotenv;
+
+use api::*;
+use config::*;
+use models::*;
+use middleware::*;
+use services::*;
+use utils::*;
+use routes::*;
+use state::*;
 
 use crate::client::ColisPriveClient;
 use crate::utils::decode_base64;
@@ -28,7 +41,7 @@ async fn main() -> Result<()> {
 
     // Configurar logging
     tracing_subscriber::fmt()
-        .with_env_filter("debug")
+        .with_max_level(tracing::Level::DEBUG)
         .init();
 
     info!("🚚 Delivery Route Optimizer - API REST");
@@ -47,9 +60,14 @@ async fn main() -> Result<()> {
     };
 
     // Crear router de la API
+    let app_state = AppState {
+        pool,
+        config: EnvironmentConfig::default(),
+    };
+    
     let app = Router::new()
         .merge(crate::api::create_api_router())
-        .layer(Extension(pool.clone()));
+        .with_state(app_state);
 
     // Puerto del servidor
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
@@ -59,8 +77,8 @@ async fn main() -> Result<()> {
 
     // Iniciar servidor en background
     let server_handle = tokio::spawn(async move {
-        Server::bind(&addr)
-            .serve(app.into_make_service())
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
             .await
             .map_err(|e| {
@@ -104,13 +122,15 @@ async fn run_colis_prive_demo() -> Result<()> {
     let login_response = client.login(COLIS_PRIVE_USERNAME, COLIS_PRIVE_PASSWORD, COLIS_PRIVE_SOCIETE).await?;
 
     info!("✅ Login exitoso!");
+    info!("   🔐 Authentifié: {}", login_response.isAuthentif);
+    info!("   👤 Identity: {}", login_response.identity);
     info!("   📋 Matricule: {}", login_response.matricule);
     info!("   🏢 Societe: {}", login_response.societe);
-    info!("   🔑 Token: {}...", &login_response.tokens.sso_hopps[..50.min(login_response.tokens.sso_hopps.len())]);
+    info!("   🔑 Token SsoHopps: {}...", &login_response.tokens.SsoHopps[..50.min(login_response.tokens.SsoHopps.len())]);
 
     // Pilot access
     let _pilot_response = client.get_pilot_access(
-        &login_response.tokens.sso_hopps,
+        &login_response.tokens.SsoHopps,
         &login_response.matricule,
         &login_response.societe
     ).await?;
@@ -120,7 +140,7 @@ async fn run_colis_prive_demo() -> Result<()> {
     // Dashboard info - PROBAR CON CURL PRIMERO
     info!("🔍 Probando Dashboard info con curl...");
     let _dashboard_response_curl = client.get_dashboard_info_curl(
-        &login_response.tokens.sso_hopps,
+        &login_response.tokens.SsoHopps,
         &login_response.societe,
         &login_response.matricule,
         "2025-08-14"  // FECHA DE HOY
@@ -131,7 +151,7 @@ async fn run_colis_prive_demo() -> Result<()> {
     // Dashboard info - PROBAR CON REQWEST
     info!("🔍 Probando Dashboard info con reqwest...");
     let _dashboard_response = client.get_dashboard_info(
-        &login_response.tokens.sso_hopps,
+        &login_response.tokens.SsoHopps,
         &login_response.societe,
         &login_response.matricule,
         "2025-08-14"  // FECHA DE HOY
@@ -143,7 +163,7 @@ async fn run_colis_prive_demo() -> Result<()> {
     let date = "2025-08-14"; // FECHA DE HOY
     info!("📅 Obteniendo tournée para la fecha: {}", date);
 
-    match client.get_tournee_curl(&login_response.tokens.sso_hopps, COLIS_PRIVE_SOCIETE, &login_response.matricule, date).await {
+    match client.get_tournee_curl(&login_response.tokens.SsoHopps, &login_response.societe, &login_response.matricule, date).await {
         Ok(tournee_data) => {
             info!("✅ Tournée obtenida exitosamente");
             info!("\n🔍 Decodificando datos Base64...");

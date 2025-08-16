@@ -97,7 +97,7 @@ pub async fn get_dashboard_summary(
             .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
             .unwrap_or(0.0),
         average_route_efficiency: performance_metrics.avg_route_efficiency
-            .map(|e| e.to_string().parse::<f64>().unwrap_or(0.0))
+            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
             .unwrap_or(0.0),
         total_distance_km: performance_metrics.total_distance
             .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
@@ -192,9 +192,9 @@ pub async fn get_performance_by_tournee(
             tournee_id: Some(row.tournee_id),
             driver_id: Some(row.driver_id),
             vehicle_id: Some(row.vehicle_id),
-            total_time_minutes: row.total_time_minutes.unwrap_or(0),
-            driving_time_minutes: row.driving_time_minutes.unwrap_or(0),
-            waiting_time_minutes: row.waiting_time_minutes.unwrap_or(0),
+            total_time_minutes: row.total_time_minutes.unwrap_or(0) as i32,
+            driving_time_minutes: row.driving_time_minutes.unwrap_or(0) as i32,
+            waiting_time_minutes: row.waiting_time_minutes.expect("waiting_time_minutes should not be null"),
             total_distance_km: row.total_distance_km
                 .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
                 .unwrap_or(0.0),
@@ -206,12 +206,12 @@ pub async fn get_performance_by_tournee(
             delivery_success_rate: row.delivery_success_rate.unwrap_or(0.0),
             fuel_consumed_liters: row.fuel_consumed_liters
                 .map(|f| f.to_string().parse::<f64>().unwrap_or(0.0)),
-            fuel_efficiency_km_l: Some(row.fuel_efficiency_km_l.unwrap_or(0.0)),
+            fuel_efficiency_km_l: row.fuel_efficiency_km_l.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
             total_cost: row.total_cost,
             cost_per_package: row.cost_per_package,
             cost_per_km: row.cost_per_km,
             customer_rating: row.customer_rating,
-            complaints_count: row.complaints_count.unwrap_or(0),
+            complaints_count: row.complaints_count.expect("complaints_count should not be null"),
             date: row.date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
@@ -271,7 +271,7 @@ pub async fn get_driver_performance(
             END as cost_per_km,
             NULL::float as customer_rating,
             0 as complaints_count,
-            $3 as date,
+            $3::date as date,
             MIN(t.created_at) as created_at,
             MAX(t.updated_at) as updated_at
         FROM tournees t
@@ -299,9 +299,9 @@ pub async fn get_driver_performance(
             tournee_id: row.tournee_id,
             driver_id: Some(row.driver_id),
             vehicle_id: row.vehicle_id,
-            total_time_minutes: row.total_time_minutes.unwrap_or(0),
-            driving_time_minutes: row.driving_time_minutes.unwrap_or(0),
-            waiting_time_minutes: row.waiting_time_minutes,
+            total_time_minutes: row.total_time_minutes.unwrap_or(0) as i32,
+            driving_time_minutes: row.driving_time_minutes.unwrap_or(0) as i32,
+            waiting_time_minutes: row.waiting_time_minutes.expect("waiting_time_minutes should not be null"),
             total_distance_km: row.total_distance_km
                 .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
                 .unwrap_or(0.0),
@@ -313,13 +313,13 @@ pub async fn get_driver_performance(
             delivery_success_rate: row.delivery_success_rate.unwrap_or(0.0),
             fuel_consumed_liters: row.fuel_consumed_liters
                 .map(|f| f.to_string().parse::<f64>().unwrap_or(0.0)),
-            fuel_efficiency_km_l: Some(row.fuel_efficiency_km_l.unwrap_or(0.0)),
+            fuel_efficiency_km_l: row.fuel_efficiency_km_l.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
             total_cost: row.total_cost,
             cost_per_package: row.cost_per_package,
             cost_per_km: row.cost_per_km,
             customer_rating: row.customer_rating,
-            complaints_count: row.complaints_count,
-            date: row.date,
+            complaints_count: row.complaints_count.expect("complaints_count should not be null"),
+            date: row.date.expect("date should not be null"),
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
         })
@@ -378,7 +378,7 @@ pub async fn get_vehicle_performance(
             END as cost_per_km,
             NULL::float as customer_rating,
             0 as complaints_count,
-            $3 as date,
+            $3::date as date,
             MIN(t.created_at) as created_at,
             MAX(t.updated_at) as updated_at
         FROM tournees t
@@ -406,9 +406,9 @@ pub async fn get_vehicle_performance(
             tournee_id: row.tournee_id,
             driver_id: row.driver_id,
             vehicle_id: Some(row.vehicle_id),
-            total_time_minutes: row.total_time_minutes.unwrap_or(0),
-            driving_time_minutes: row.driving_time_minutes.unwrap_or(0),
-            waiting_time_minutes: row.waiting_time_minutes,
+            total_time_minutes: row.total_time_minutes.unwrap_or(0) as i32,
+            driving_time_minutes: row.driving_time_minutes.unwrap_or(0) as i32,
+            waiting_time_minutes: row.waiting_time_minutes.expect("waiting_time_minutes should not be null"),
             total_distance_km: row.total_distance_km
                 .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
                 .unwrap_or(0.0),
@@ -420,13 +420,13 @@ pub async fn get_vehicle_performance(
             delivery_success_rate: row.delivery_success_rate.unwrap_or(0.0),
             fuel_consumed_liters: row.fuel_consumed_liters
                 .map(|f| f.to_string().parse::<f64>().unwrap_or(0.0)),
-            fuel_efficiency_km_l: Some(row.fuel_efficiency_km_l.unwrap_or(0.0)),
+            fuel_efficiency_km_l: row.fuel_efficiency_km_l.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)),
             total_cost: row.total_cost,
             cost_per_package: row.cost_per_package,
             cost_per_km: row.cost_per_km,
             customer_rating: row.customer_rating,
-            complaints_count: row.complaints_count,
-            date: row.date,
+            complaints_count: row.complaints_count.expect("complaints_count should not be null"),
+            date: row.date.expect("date should not be null"),
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
         })

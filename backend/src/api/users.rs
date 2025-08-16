@@ -88,7 +88,7 @@ pub async fn create_user(
         INSERT INTO users (
             company_id, user_type, user_status, username, 
             password_hash, created_at, updated_at
-        ) VALUES ($1, $2::user_type, $3::user_status, $4, $5, NOW(), NOW())
+        ) VALUES ($1, ($2::text)::user_type, ($3::text)::user_status, $4, $5, NOW(), NOW())
         RETURNING 
             id, company_id, user_type as "user_type: crate::models::user::UserType", user_status as "user_status: crate::models::user::UserStatus", 
             username, password_hash, created_at, updated_at, deleted_at

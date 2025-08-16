@@ -12,13 +12,10 @@ pub struct ColisPriveClient {
 
 impl ColisPriveClient {
     pub fn new() -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .http1_only()  // CRÍTICO: Forzar HTTP/1.1
-            .no_gzip()     // Deshabilitar GZIP automático
-            .build()?;
+        // ureq no necesita builder, es más simple
 
         Ok(Self {
-            client,
+            client: reqwest::Client::new(),
             auth_base_url: "https://wsauthentificationexterne.colisprive.com".to_string(),
             tournee_base_url: "https://wstournee-v2.colisprive.com".to_string(),
             sso_token: None,
@@ -67,7 +64,8 @@ impl ColisPriveClient {
         }
 
         let login_response: LoginResponse = response.json().await?;
-        self.sso_token = Some(login_response.tokens.sso_hopps.clone());
+        // Ahora usamos el token real de la respuesta
+        self.sso_token = Some(login_response.tokens.SsoHopps.clone());
         
         Ok(login_response)
     }

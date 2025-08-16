@@ -200,7 +200,7 @@ pub async fn register(
         INSERT INTO users (
             company_id, user_type, user_status, username, 
             password_hash, created_at, updated_at
-        ) VALUES ($1, $2::user_type, $3::user_status, $4, $5, NOW(), NOW())
+        ) VALUES ($1, ($2::text)::user_type, ($3::text)::user_status, $4, $5, NOW(), NOW())
         RETURNING 
             id, company_id, user_type as "user_type: crate::models::user::UserType", user_status as "user_status: crate::models::user::UserStatus", username, 
             password_hash, created_at, updated_at, deleted_at
@@ -232,7 +232,7 @@ pub async fn register(
 
     // Generar JWT token
     let jwt_config = JwtConfig::from(config);
-    let access_token = generate_token(new_user.id, new_user.company_id, new_user.user_type, &jwt_config)?;
+    let access_token = generate_token(new_user.id, new_user.company_id, new_user.user_type.clone(), &jwt_config)?;
 
     // Convertir a response
     let user_response = UserResponse::from(new_user);
@@ -306,4 +306,16 @@ pub async fn logout() -> StatusCode {
     // En una implementación real, aquí invalidarías el token
     // Por ahora, solo retornamos OK
     StatusCode::OK
+}
+
+use axum::Router;
+
+/// Crear el router de autenticación
+pub fn create_auth_router() -> Router<crate::state::AppState> {
+    Router::new()
+        .route("/login", axum::routing::post(login))
+        .route("/register", axum::routing::post(register))
+        .route("/me", axum::routing::get(me))
+        .route("/refresh", axum::routing::post(refresh_token))
+        .route("/logout", axum::routing::post(logout))
 }

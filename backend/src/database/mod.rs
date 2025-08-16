@@ -1,7 +1,7 @@
-//! Configuración de base de datos
+//! Módulo de base de datos
 //! 
-//! Este módulo contiene la configuración y conexión a PostgreSQL con PostGIS.
+//! Este módulo maneja la conexión y configuración de la base de datos.
 
 pub mod connection;
 
-pub use connection::DatabasePool;
+pub use connection::*;
