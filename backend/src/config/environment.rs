@@ -65,8 +65,6 @@ impl EnvironmentConfig {
     }
 }
 
-/// Credenciales de Colis Privé
-pub const COLIS_PRIVE_USERNAME: &str = "PCP0010699_A187518";
-pub const COLIS_PRIVE_PASSWORD: &str = "INTI7518";
-pub const COLIS_PRIVE_SOCIETE: &str = "PCP0010699";
+// Las credenciales de Colis Privé ahora se reciben dinámicamente via HTTP requests
+// No hay credenciales hardcodeadas en el código
 

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     config::EnvironmentConfig,
-    user::UserType,
+    models::user::UserType,
     utils::errors::AppError,
 };
 

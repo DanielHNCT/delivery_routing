@@ -1,38 +1,28 @@
 mod api;
 mod config;
-mod models;
-mod middleware;
+mod state;
+mod database;
 mod services;
 mod utils;
-mod routes;
-mod state;
 mod client;
+mod models;
 mod external_models;
-mod database;
 
 use anyhow::Result;
 use axum::{
-    Extension, Router,
-    http::Method,
+    Router,
+    routing::{get, post},
+    response::Json,
 };
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::signal;
 use tracing::{info, error};
 use dotenvy::dotenv;
+use serde_json::json;
 
 use api::*;
 use config::*;
-use models::*;
-use middleware::*;
-use services::*;
-use utils::*;
-use routes::*;
 use state::*;
-
-use crate::client::ColisPriveClient;
-use crate::utils::decode_base64;
-use config::{COLIS_PRIVE_USERNAME, COLIS_PRIVE_PASSWORD, COLIS_PRIVE_SOCIETE};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -66,7 +56,10 @@ async fn main() -> Result<()> {
     };
     
     let app = Router::new()
-        .merge(crate::api::create_api_router())
+        .route("/test", get(test_endpoint))
+        .route("/api/colis-prive/auth", post(authenticate_colis_prive))
+        .route("/api/colis-prive/tournee", post(get_tournee_data))
+        .route("/api/colis-prive/health", get(health_check))
         .with_state(app_state);
 
     // Puerto del servidor
@@ -74,6 +67,11 @@ async fn main() -> Result<()> {
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
     info!("🌐 Servidor iniciando en http://{}", addr);
+    info!("🔍 Endpoints disponibles:");
+    info!("   GET  /test - Endpoint de prueba");
+    info!("   POST /api/colis-prive/auth - Autenticación Colis Privé");
+    info!("   POST /api/colis-prive/tournee - Tournée Colis Privé");
+    info!("   GET  /api/colis-prive/health - Health check Colis Privé");
 
     // Iniciar servidor en background
     let server_handle = tokio::spawn(async move {
@@ -87,8 +85,7 @@ async fn main() -> Result<()> {
             })
     });
 
-    // Ejecutar funcionalidad existente de Colis Privé
-    run_colis_prive_demo().await?;
+    // La API ahora es completamente stateless - no hay conexiones automáticas
 
     // Esperar a que el servidor termine
     if let Err(e) = server_handle.await? {
@@ -99,101 +96,17 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Función para ejecutar la demo existente de Colis Privé
-async fn run_colis_prive_demo() -> Result<()> {
-    info!("🔐 Ejecutando demo de Colis Privé...");
-
-    // Verificar credenciales
-    if COLIS_PRIVE_USERNAME == "tu_usuario_aqui" ||
-       COLIS_PRIVE_PASSWORD == "tu_password_aqui" ||
-       COLIS_PRIVE_SOCIETE == "tu_societe_aqui" {
-        info!("⚠️  Credenciales de Colis Privé no configuradas, saltando demo");
-        return Ok(());
-    }
-
-    // Crear cliente
-    let mut client = ColisPriveClient::new()?;
-
-    info!("🔐 Intentando login con:");
-    info!("   Login: {}", COLIS_PRIVE_USERNAME);
-    info!("   Societe: {}", COLIS_PRIVE_SOCIETE);
-
-    // Login
-    let login_response = client.login(COLIS_PRIVE_USERNAME, COLIS_PRIVE_PASSWORD, COLIS_PRIVE_SOCIETE).await?;
-
-    info!("✅ Login exitoso!");
-    info!("   🔐 Authentifié: {}", login_response.isAuthentif);
-    info!("   👤 Identity: {}", login_response.identity);
-    info!("   📋 Matricule: {}", login_response.matricule);
-    info!("   🏢 Societe: {}", login_response.societe);
-    info!("   🔑 Token SsoHopps: {}...", &login_response.tokens.SsoHopps[..50.min(login_response.tokens.SsoHopps.len())]);
-
-    // Pilot access
-    let _pilot_response = client.get_pilot_access(
-        &login_response.tokens.SsoHopps,
-        &login_response.matricule,
-        &login_response.societe
-    ).await?;
-
-    info!("✅ Pilot access exitoso!");
-
-    // Dashboard info - PROBAR CON CURL PRIMERO
-    info!("🔍 Probando Dashboard info con curl...");
-    let _dashboard_response_curl = client.get_dashboard_info_curl(
-        &login_response.tokens.SsoHopps,
-        &login_response.societe,
-        &login_response.matricule,
-        "2025-08-14"  // FECHA DE HOY
-    ).await?;
-    
-    info!("✅ Dashboard info con curl exitoso!");
-    
-    // Dashboard info - PROBAR CON REQWEST
-    info!("🔍 Probando Dashboard info con reqwest...");
-    let _dashboard_response = client.get_dashboard_info(
-        &login_response.tokens.SsoHopps,
-        &login_response.societe,
-        &login_response.matricule,
-        "2025-08-14"  // FECHA DE HOY
-    ).await?;
-    
-    info!("✅ Dashboard info con reqwest exitoso!");
-
-    // Obtener tournée con curl (que funciona)
-    let date = "2025-08-14"; // FECHA DE HOY
-    info!("📅 Obteniendo tournée para la fecha: {}", date);
-
-    match client.get_tournee_curl(&login_response.tokens.SsoHopps, &login_response.societe, &login_response.matricule, date).await {
-        Ok(tournee_data) => {
-            info!("✅ Tournée obtenida exitosamente");
-            info!("\n🔍 Decodificando datos Base64...");
-
-            match decode_base64(&tournee_data) {
-                Ok(decoded_str) => {
-                    if decoded_str.contains("No hay tournées programadas") {
-                        info!("ℹ️  {}", decoded_str);
-                        info!("✅ Sistema funcionando correctamente - La API responde normalmente");
-                    } else {
-                        info!("✅ Datos decodificados correctamente");
-                        info!("\n📊 Información de la tournée:");
-                        info!("📋 Datos completos de la tournée:");
-                        info!("{}", decoded_str);
-                    }
-                    info!("\n🎉 Demo de Colis Privé completado exitosamente!");
-                }
-                Err(e) => {
-                    info!("❌ Error decodificando Base64: {}", e);
-                    info!("📋 Datos crudos recibidos: {}", tournee_data);
-                }
-            }
-        }
-        Err(e) => {
-            info!("❌ Error obteniendo tournée: {}", e);
-        }
-    }
-
-    Ok(())
+/// Endpoint de prueba simple
+async fn test_endpoint() -> Json<serde_json::Value> {
+    Json(json!({
+        "message": "¡API funcionando correctamente!",
+        "status": "ok",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
 }
+
+// La función run_colis_prive_demo() ha sido eliminada
+// La API ahora es completamente stateless y solo responde a requests HTTP
 
 /// Señal de apagado graceful
 async fn shutdown_signal() {
