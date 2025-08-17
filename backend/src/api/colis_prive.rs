@@ -120,3 +120,24 @@ pub async fn health_check() -> Json<serde_json::Value> {
         "message": "Servicio Colis Privé funcionando correctamente"
     }))
 }
+
+/// POST /api/colis-prive/mobile-tournee - Obtener tournée usando endpoint móvil real
+pub async fn get_mobile_tournee(
+    State(_state): State<AppState>,
+    Json(request): Json<crate::external_models::MobileTourneeRequest>,
+) -> Result<Json<crate::external_models::MobileTourneeResponse>, StatusCode> {
+    match crate::services::ColisPriveService::get_mobile_tournee(request).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            tracing::error!("Error obteniendo tournée móvil: {}", e);
+            let error_response = crate::external_models::MobileTourneeResponse {
+                success: false,
+                data: None,
+                message: format!("Error interno del servidor: {}", e),
+                endpoint_used: "mobile".to_string(),
+                total_packages: 0,
+            };
+            Ok(Json(error_response))
+        }
+    }
+}

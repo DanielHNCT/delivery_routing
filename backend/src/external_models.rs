@@ -165,3 +165,73 @@ pub struct TourneeParams {
     pub matricule: String,
     pub date_debut: String,
 }
+
+// ===== NUEVOS MODELOS MÓVILES =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MobilePackageAction {
+    #[serde(rename = "nomDistributeur")]
+    pub nom_distributeur: Option<String>,
+    #[serde(rename = "matriculeDistributeur")]
+    pub matricule_distributeur: String,
+    #[serde(rename = "idSocieteDistributrice")]
+    pub id_societe_distributrice: u32,
+    #[serde(rename = "codeSocieteDistributrice")]
+    pub code_societe_distributrice: String,
+    #[serde(rename = "codeAgence")]
+    pub code_agence: String,
+    #[serde(rename = "idLieuArticle")]
+    pub id_lieu_article: String,
+    #[serde(rename = "codeTourneeMCP")]
+    pub code_tournee_mcp: String,
+    #[serde(rename = "idArticle")]
+    pub id_article: String,
+    #[serde(rename = "refExterneArticle")]
+    pub ref_externe_article: String,
+    #[serde(rename = "codeBarreArticle")]
+    pub code_barre_article: String,
+    #[serde(rename = "codeSocieteEmetriceArticle")]
+    pub code_societe_emetrice_article: String,
+    #[serde(rename = "codeSocietePriseEnCharge")]
+    pub code_societe_prise_en_charge: String,
+    #[serde(rename = "idAction")]
+    pub id_action: String,
+    #[serde(rename = "codeCleAction")]
+    pub code_cle_action: String,
+    #[serde(rename = "libelleAction")]
+    pub libelle_action: String,
+    #[serde(rename = "codeTypeAction")]
+    pub code_type_action: String,
+    #[serde(rename = "codeAction")]
+    pub code_action: String,
+    #[serde(rename = "numOrdreAction")]
+    pub num_ordre_action: u32,
+    #[serde(rename = "CoOrigineCreation")]
+    pub co_origine_creation: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MobileTourneeRequest {
+    pub username: String,
+    pub password: String,
+    pub societe: String,
+    pub date: String,
+    pub matricule: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MobileTourneeResponse {
+    pub success: bool,
+    pub data: Option<Vec<MobilePackageAction>>,
+    pub message: String,
+    pub endpoint_used: String,
+    pub total_packages: usize,
+}
+
+// Estructura auxiliar para credenciales
+#[derive(Debug, Clone)]
+pub struct ColisPriveCredentials {
+    pub username: String,
+    pub password: String,
+    pub societe: String,
+}

@@ -7,6 +7,8 @@ mod utils;
 mod client;
 mod models;
 mod external_models;
+mod cache;
+mod migration;
 
 use anyhow::Result;
 use axum::{
@@ -23,6 +25,10 @@ use serde_json::json;
 use api::*;
 use config::*;
 use state::*;
+use migration::*;
+use cache::{RedisClient, AuthCache, TourneeCache, CacheConfig};
+use migration::services::MigrationService;
+use services::colis_prive_service::{authenticate_colis_prive_cached, get_tournee_data_cached};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,17 +55,36 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Crear router de la API
-    let app_state = AppState {
-        pool,
-        config: EnvironmentConfig::default(),
+    // Inicializar Redis y cache
+    let cache_config = CacheConfig::default();
+    let redis_client = match RedisClient::new(cache_config.clone()).await {
+        Ok(client) => {
+            info!("✅ Redis conectado exitosamente");
+            client
+        }
+        Err(e) => {
+            error!("❌ Error conectando a Redis: {}", e);
+            return Err(anyhow::anyhow!("Error de Redis: {}", e));
+        }
     };
+
+    // Crear router de la API
+    let app_state = AppState::new(pool, EnvironmentConfig::default(), redis_client);
     
     let app = Router::new()
         .route("/test", get(test_endpoint))
         .route("/api/colis-prive/auth", post(authenticate_colis_prive))
+        // .route("/api/colis-prive/auth/cached", post(authenticate_colis_prive_cached))
         .route("/api/colis-prive/tournee", post(get_tournee_data))
+        // .route("/api/colis-prive/tournee/cached", post(get_tournee_data_cached))
+        .route("/api/colis-prive/mobile-tournee", post(get_mobile_tournee))
         .route("/api/colis-prive/health", get(health_check))
+        .route("/api/migration/status", get(get_migration_status))
+        .route("/api/migration/strategy", post(change_migration_strategy))
+        .route("/api/migration/metrics", get(get_migration_metrics))
+        .route("/api/migration/progress", post(force_migration_progress))
+        .route("/api/migration/rollback", post(force_migration_rollback))
+        .route("/api/migration/health", get(migration_health_check))
         .with_state(app_state);
 
     // Puerto del servidor
@@ -70,8 +95,17 @@ async fn main() -> Result<()> {
     info!("🔍 Endpoints disponibles:");
     info!("   GET  /test - Endpoint de prueba");
     info!("   POST /api/colis-prive/auth - Autenticación Colis Privé");
+    // info!("   POST /api/colis-prive/auth/cached - Autenticación Colis Privé con cache");
     info!("   POST /api/colis-prive/tournee - Tournée Colis Privé");
+    // info!("   POST /api/colis-prive/tournee/cached - Tournée Colis Privé con cache");
+    info!("   POST /api/colis-prive/mobile-tournee - Tournée Móvil Colis Privé");
     info!("   GET  /api/colis-prive/health - Health check Colis Privé");
+    info!("   GET  /api/migration/status - Estado de migración");
+    info!("   POST /api/migration/strategy - Cambiar estrategia");
+    info!("   GET  /api/migration/metrics - Métricas de migración");
+    info!("   POST /api/migration/progress - Forzar progresión");
+    info!("   POST /api/migration/rollback - Forzar rollback");
+    info!("   GET  /api/migration/health - Health check migración");
 
     // Iniciar servidor en background
     let server_handle = tokio::spawn(async move {

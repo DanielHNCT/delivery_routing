@@ -1,5 +1,7 @@
-use crate::external_models::{LoginRequest, LoginResponse, TourneeRequest, Commun};
+use crate::external_models::*;
+use crate::external_models::ColisPriveCredentials;
 use anyhow::Result;
+use base64::Engine;
 use reqwest::Client;
 use serde_json::json;
 
@@ -286,5 +288,64 @@ impl ColisPriveClient {
 
     pub fn is_authenticated(&self) -> bool {
         self.sso_token.is_some()
+    }
+
+    /// Obtener tournée usando el endpoint móvil real de Colis Privé
+    pub async fn get_mobile_tournee(
+        &self,
+        credentials: &ColisPriveCredentials,
+        date: &str,
+        matricule: &str,
+        token: &str,
+    ) -> Result<Vec<crate::external_models::MobilePackageAction>, Box<dyn std::error::Error>> {
+        let activity_id = uuid::Uuid::new_v4().to_string();
+        let basic_auth = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{}:null", matricule)));
+        
+        let body = serde_json::json!({
+            "DateDebut": date,
+            "Matricule": matricule
+        });
+
+        println!("🚀 Llamando endpoint móvil de Colis Privé...");
+        println!("📱 URL: https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST");
+        println!("🔑 Token: {}", token);
+        println!("📅 Fecha: {}", date);
+        println!("🆔 Matrícula: {}", matricule);
+
+        let response = self.client
+            .post("https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST")
+            .header("Accept-Charset", "UTF-8")
+            .header("ActivityId", &activity_id)
+            .header("AppName", "CP DISTRI V2")
+            .header("UserName", matricule.split('_').last().unwrap_or(matricule).to_string())
+            .header("AppIdentifier", "com.delivery.optimizer")
+            .header("Device", "AndroidApp")
+            .header("VersionOS", "Android")
+            .header("VersionApplication", "1.0.0")
+            .header("VersionCode", "1")
+            .header("Societe", &credentials.societe)
+            .header("Domaine", "Membership")
+            .header("SsoHopps", token)
+            .header("Authorization", &basic_auth)
+            .header("Content-Type", "application/json; charset=UTF-8")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        println!("📥 Status de respuesta móvil: {}", status);
+
+        if !status.is_success() {
+            let error_body = response.text().await?;
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Endpoint móvil falló con status: {} - Body: {}", status, error_body)
+            )));
+        }
+
+        let mobile_data: Vec<crate::external_models::MobilePackageAction> = response.json().await?;
+        println!("✅ Datos móviles obtenidos exitosamente: {} paquetes", mobile_data.len());
+        
+        Ok(mobile_data)
     }
 }
