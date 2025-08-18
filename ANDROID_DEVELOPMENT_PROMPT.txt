@@ -1,0 +1,500 @@
+# 🚀 PROMPT COMPLETO PARA DESARROLLO ANDROID APP - DELIVERY ROUTING
+
+## 📋 **CONTEXTO DEL PROYECTO**
+
+**Proyecto:** Sistema de Enrutamiento de Repartidores Colis Privé  
+**Estado:** Backend API funcionando + Sistema de migración activo  
+**Objetivo:** App Android funcional para demo del martes  
+**Arquitectura:** API Rust + Redis + PostgreSQL  
+
+---
+
+## 🎯 **REQUISITOS FUNCIONALES DE LA APP**
+
+### **1. AUTENTICACIÓN**
+- Login con credenciales Colis Privé
+- Manejo de tokens de sesión
+- Logout y limpieza de datos
+
+### **2. DASHBOARD PRINCIPAL**
+- Vista general del día
+- Estado de conexión con API
+- Indicadores de performance
+- Botones de navegación principales
+
+### **3. GESTIÓN DE TOURNÉE**
+- Lista de tours del día
+- Detalles de cada tour
+- Estado de entregas (pendiente, en curso, completada)
+- Mapa de ruta optimizada
+
+### **4. DETALLES DE ENTREGA**
+- Información del paquete
+- Dirección de entrega
+- Código de barras/QR
+- Foto de confirmación
+- Firma digital
+
+### **5. SINCRONIZACIÓN**
+- Sincronización offline/online
+- Cache local de datos
+- Sincronización automática en background
+- Manejo de errores de conexión
+
+---
+
+## 🏗️ **ARQUITECTURA TÉCNICA**
+
+### **PATRÓN DE ARQUITECTURA**
+```
+MVVM + Repository Pattern + Clean Architecture
+```
+
+### **COMPONENTES PRINCIPALES**
+- **Activities/Fragments:** UI y navegación
+- **ViewModels:** Lógica de presentación
+- **Repository:** Acceso a datos (API + Local)
+- **API Service:** Comunicación con backend
+- **Database:** Room para cache local
+- **DI:** Hilt para inyección de dependencias
+
+### **TECNOLOGÍAS RECOMENDADAS**
+- **Kotlin:** 100% Kotlin
+- **Jetpack Compose:** UI moderna
+- **Coroutines:** Async/await
+- **Retrofit:** API calls
+- **Room:** Base de datos local
+- **Hilt:** Dependency injection
+- **Navigation Component:** Navegación
+- **ViewModel + LiveData:** Estado de UI
+
+---
+
+## 🔗 **ENDPOINTS DE API DISPONIBLES**
+
+### **BASE URL:** `http://192.168.1.101:3000` (Pi 5 Master)
+
+### **1. AUTENTICACIÓN**
+```
+POST /api/colis-prive/auth
+Content-Type: application/json
+
+{
+  "username": "tu_usuario",
+  "password": "tu_password"
+}
+
+Response:
+{
+  "success": true,
+  "token": "jwt_token_aqui",
+  "expires_at": "2025-08-19T10:00:00Z"
+}
+```
+
+### **2. TOURNÉE MÓVIL**
+```
+POST /api/colis-prive/mobile-tournee
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "date": "2025-08-18",
+  "driver_id": "DRIVER_001"
+}
+
+Response:
+{
+  "success": true,
+  "tournee": {
+    "id": "TOUR_001",
+    "date": "2025-08-18",
+    "driver_id": "DRIVER_001",
+    "deliveries": [
+      {
+        "id": "DEL_001",
+        "package_id": "PKG_001",
+        "address": "123 Calle Principal",
+        "city": "Madrid",
+        "postal_code": "28001",
+        "status": "pending",
+        "estimated_time": "14:30",
+        "coordinates": {
+          "lat": 40.4168,
+          "lng": -3.7038
+        }
+      }
+    ],
+    "total_deliveries": 25,
+    "estimated_duration": "8h 30m",
+    "total_distance": "45.2 km"
+  }
+}
+```
+
+### **3. ACTUALIZAR ESTADO DE ENTREGA**
+```
+PUT /api/colis-prive/delivery/{delivery_id}/status
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "status": "completed",
+  "completed_at": "2025-08-18T14:30:00Z",
+  "photo_url": "base64_encoded_photo",
+  "signature": "base64_encoded_signature",
+  "notes": "Entregado en recepción"
+}
+
+Response:
+{
+  "success": true,
+  "delivery": {
+    "id": "DEL_001",
+    "status": "completed",
+    "completed_at": "2025-08-18T14:30:00Z"
+  }
+}
+```
+
+### **4. HEALTH CHECK**
+```
+GET /api/colis-prive/health
+
+Response:
+{
+  "status": "healthy",
+  "timestamp": "2025-08-18T10:00:00Z",
+  "version": "1.0.0"
+}
+```
+
+---
+
+## 📱 **ESTRUCTURA DE LA APP**
+
+### **PACKAGES RECOMENDADOS**
+```
+com.deliveryrouting.android/
+├── data/
+│   ├── api/
+│   │   ├── ColisPriveApiService.kt
+│   │   ├── AuthInterceptor.kt
+│   │   └── models/
+│   ├── local/
+│   │   ├── database/
+│   │   ├── preferences/
+│   │   └── models/
+│   └── repository/
+├── domain/
+│   ├── models/
+│   ├── usecases/
+│   └── repository/
+├── presentation/
+│   ├── ui/
+│   │   ├── auth/
+│   │   ├── dashboard/
+│   │   ├── tournee/
+│   │   └── delivery/
+│   ├── viewmodels/
+│   └── common/
+├── di/
+└── utils/
+```
+
+### **ACTIVITIES/FRAGMENTS PRINCIPALES**
+1. **SplashActivity:** Pantalla de carga inicial
+2. **LoginActivity:** Autenticación
+3. **MainActivity:** Contenedor principal con Navigation
+4. **DashboardFragment:** Vista general
+5. **TourneeListFragment:** Lista de tours
+6. **TourneeDetailFragment:** Detalles del tour
+7. **DeliveryDetailFragment:** Detalles de entrega
+8. **SettingsFragment:** Configuración
+
+---
+
+## 🎨 **UI/UX REQUIREMENTS**
+
+### **DESIGN SYSTEM**
+- **Material Design 3:** Componentes modernos
+- **Colores:** Tema claro/oscuro
+- **Tipografía:** Roboto o similar
+- **Iconos:** Material Icons
+
+### **PANTALLAS CLAVE**
+1. **Login:** Usuario/contraseña + botón login
+2. **Dashboard:** Cards con métricas + navegación
+3. **Tour List:** RecyclerView con tours del día
+4. **Tour Detail:** Mapa + lista de entregas
+5. **Delivery Detail:** Formulario de confirmación
+
+### **COMPONENTES REUTILIZABLES**
+- **DeliveryCard:** Card para mostrar entrega
+- **StatusChip:** Chip para estado de entrega
+- **LoadingButton:** Botón con estado de carga
+- **ErrorView:** Vista de error reutilizable
+- **EmptyStateView:** Estado vacío
+
+---
+
+## 🔧 **CONFIGURACIÓN TÉCNICA**
+
+### **GRADLE DEPENDENCIES**
+```gradle
+dependencies {
+    // Core Android
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    
+    // Jetpack Compose
+    implementation platform('androidx.compose:compose-bom:2024.02.00')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    
+    // Architecture Components
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.7.0'
+    implementation 'androidx.navigation:navigation-compose:2.7.6'
+    
+    // Dependency Injection
+    implementation 'com.google.dagger:hilt-android:2.48'
+    kapt 'com.google.dagger:hilt-compiler:2.48'
+    
+    // Networking
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    
+    // Database
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    kapt 'androidx.room:room-compiler:2.6.1'
+    
+    // Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    
+    // Image Loading
+    implementation 'io.coil-kt:coil-compose:2.5.0'
+    
+    // Maps
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'
+    implementation 'com.google.android.gms:play-services-location:21.0.1'
+}
+```
+
+### **PERMISOS REQUERIDOS**
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+```
+
+---
+
+## 🚀 **IMPLEMENTACIÓN PASO A PASO**
+
+### **FASE 1: SETUP BÁSICO (2-3 horas)**
+1. Crear proyecto Android con Kotlin
+2. Configurar dependencias Gradle
+3. Setup Hilt para DI
+4. Configurar Navigation Component
+5. Crear estructura de packages
+
+### **FASE 2: MODELOS Y API (2-3 horas)**
+1. Crear data classes para modelos
+2. Implementar ColisPriveApiService
+3. Configurar Retrofit
+4. Crear AuthInterceptor
+5. Implementar Repository pattern
+
+### **FASE 3: UI BÁSICA (3-4 horas)**
+1. Implementar LoginActivity
+2. Crear DashboardFragment
+3. Implementar TourneeListFragment
+4. Crear navegación básica
+5. Implementar ViewModels
+
+### **FASE 4: FUNCIONALIDAD COMPLETA (4-5 horas)**
+1. Implementar TourneeDetailFragment
+2. Crear DeliveryDetailFragment
+3. Implementar mapa de entregas
+4. Agregar funcionalidad de cámara
+5. Implementar sincronización
+
+### **FASE 5: TESTING Y PULIDO (2-3 horas)**
+1. Testing manual de flujos
+2. Manejo de errores
+3. Optimización de UI
+4. Testing con API real
+5. Preparación para demo
+
+---
+
+## 🧪 **TESTING STRATEGY**
+
+### **TESTING MANUAL**
+- Login con credenciales reales
+- Navegación entre pantallas
+- Funcionalidad offline/online
+- Manejo de errores de red
+- Performance en diferentes dispositivos
+
+### **TESTING AUTOMATIZADO**
+- Unit tests para ViewModels
+- Integration tests para Repository
+- UI tests para flujos críticos
+- API tests con mock data
+
+---
+
+## 📱 **REQUISITOS DEL DISPOSITIVO**
+
+### **VERSIÓN MÍNIMA**
+- **Android:** API 24 (Android 7.0)
+- **RAM:** 2GB mínimo, 4GB recomendado
+- **Storage:** 100MB disponible
+- **Screen:** 4.5" mínimo, 5" recomendado
+
+### **FUNCIONALIDADES REQUERIDAS**
+- **GPS:** Para ubicación de entregas
+- **Cámara:** Para fotos de confirmación
+- **Internet:** WiFi o datos móviles
+- **Touch:** Pantalla táctil
+
+---
+
+## 🔑 **CREDENCIALES DE TESTING**
+
+### **API ENDPOINTS**
+- **Desarrollo:** `http://192.168.1.100:3000` (MacBook)
+- **Producción:** `http://192.168.1.101:3000` (Pi 5 Master)
+
+### **CREDENCIALES DE PRUEBA**
+```
+Usuario: test_driver
+Contraseña: test123
+```
+
+---
+
+## 📋 **CHECKLIST DE IMPLEMENTACIÓN**
+
+### **SETUP INICIAL**
+- [ ] Proyecto Android creado
+- [ ] Dependencias configuradas
+- [ ] Hilt configurado
+- [ ] Navigation configurado
+- [ ] Estructura de packages creada
+
+### **MODELOS Y API**
+- [ ] Data classes implementadas
+- [ ] Retrofit configurado
+- [ ] API service implementado
+- [ ] Repository pattern implementado
+- [ ] Auth interceptor configurado
+
+### **UI Y NAVEGACIÓN**
+- [ ] Login implementado
+- [ ] Dashboard implementado
+- [ ] Lista de tours implementada
+- [ ] Detalles de tour implementados
+- [ ] Detalles de entrega implementados
+
+### **FUNCIONALIDADES**
+- [ ] Autenticación funcionando
+- [ ] Lista de tours cargando
+- [ ] Mapa de entregas funcionando
+- [ ] Cámara para fotos implementada
+- [ ] Sincronización offline/online
+
+### **TESTING**
+- [ ] Login con credenciales reales
+- [ ] Navegación completa funcionando
+- [ ] API calls funcionando
+- [ ] Manejo de errores implementado
+- [ ] Performance aceptable
+
+---
+
+## 🎯 **OBJETIVOS DEL DEMO**
+
+### **FUNCIONALIDADES CRÍTICAS**
+1. **Login exitoso** con credenciales reales
+2. **Carga de tournée** desde API
+3. **Visualización de entregas** en lista
+4. **Navegación fluida** entre pantallas
+5. **Funcionamiento estable** sin crashes
+
+### **MÉTRICAS DE ÉXITO**
+- **Tiempo de carga:** <3 segundos para tournée
+- **Stability:** 0 crashes durante demo
+- **UX:** Navegación intuitiva
+- **Performance:** 60fps en navegación
+- **Funcionalidad:** 100% de features críticas funcionando
+
+---
+
+## 🚨 **PROBLEMAS COMUNES Y SOLUCIONES**
+
+### **1. ERRORES DE RED**
+- Implementar retry automático
+- Mostrar mensajes de error claros
+- Cache offline para datos críticos
+
+### **2. PROBLEMAS DE MEMORIA**
+- Usar ViewBinding en lugar de findViewById
+- Implementar paginación en listas largas
+- Optimizar carga de imágenes
+
+### **3. PROBLEMAS DE NAVEGACIÓN**
+- Usar Navigation Component
+- Implementar deep linking
+- Manejar back stack correctamente
+
+### **4. PROBLEMAS DE PERFORMANCE**
+- Usar Coroutines para operaciones async
+- Implementar lazy loading
+- Optimizar queries de base de datos
+
+---
+
+## 📚 **RECURSOS ADICIONALES**
+
+### **DOCUMENTACIÓN OFICIAL**
+- [Android Developers](https://developer.android.com/)
+- [Jetpack Compose](https://developer.android.com/jetpack/compose)
+- [Navigation Component](https://developer.android.com/guide/navigation)
+- [Room Database](https://developer.android.com/training/data-storage/room)
+
+### **TUTORIALES RECOMENDADOS**
+- MVVM + Repository Pattern
+- Jetpack Compose UI
+- Hilt Dependency Injection
+- Retrofit + Coroutines
+- Room Database
+
+---
+
+## 🎉 **RESULTADO FINAL ESPERADO**
+
+Una app Android completamente funcional que:
+- ✅ Se conecta a la API Rust del backend
+- ✅ Maneja autenticación con Colis Privé
+- ✅ Muestra tours y entregas del día
+- ✅ Permite confirmar entregas
+- ✅ Funciona offline/online
+- ✅ Tiene UI moderna y responsive
+- ✅ Está lista para demo del martes
+
+---
+
+*Prompt creado: 18 de Agosto, 2025*  
+*Estado: 🟢 LISTO PARA IMPLEMENTACIÓN*  
+*Tiempo estimado: 12-18 horas de desarrollo*

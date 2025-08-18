@@ -170,6 +170,7 @@ pub struct TourneeParams {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MobilePackageAction {
+    // Campos existentes
     #[serde(rename = "nomDistributeur")]
     pub nom_distributeur: Option<String>,
     #[serde(rename = "matriculeDistributeur")]
@@ -204,10 +205,47 @@ pub struct MobilePackageAction {
     pub code_type_action: String,
     #[serde(rename = "codeAction")]
     pub code_action: String,
-    #[serde(rename = "numOrdreAction")]
-    pub num_ordre_action: u32,
     #[serde(rename = "CoOrigineCreation")]
     pub co_origine_creation: String,
+
+    // NUEVOS CAMPOS CAPTURADOS
+    // Coordenadas GPS
+    #[serde(rename = "coordXGPSCptRendu")]
+    pub coord_x_gps_cpt_rendu: Option<f64>,
+    #[serde(rename = "coordYGPSCptRendu")]
+    pub coord_y_gps_cpt_rendu: Option<f64>,
+    #[serde(rename = "gpsQualite")]
+    pub gps_qualite: Option<String>,
+    
+    // Duración y orden
+    #[serde(rename = "dureeSecondePrevueAction")]
+    pub duree_seconde_prevue_action: Option<f64>,
+    #[serde(rename = "numOrdreAction")]
+    pub num_ordre_action: Option<u32>,
+    #[serde(rename = "numOrdreCptRendu")]
+    pub num_ordre_cpt_rendu: Option<u32>,
+    
+    // Timestamps
+    #[serde(rename = "horodatageCptRendu")]
+    pub horodatage_cpt_rendu: Option<String>,
+    #[serde(rename = "valeurAttenduCptRendu")]
+    pub valeur_attendu_cpt_rendu: Option<String>,
+    
+    // Estados de transmisión
+    #[serde(rename = "VFTransmisSITiers")]
+    pub vf_transmis_si_tiers: Option<bool>,
+    #[serde(rename = "DateTransmisSiTiers")]
+    pub date_transmis_si_tiers: Option<String>,
+    
+    // Campos adicionales de seguimiento
+    #[serde(rename = "idCptRendu")]
+    pub id_cpt_rendu: Option<String>,
+    #[serde(rename = "codeCleCptRendu")]
+    pub code_cle_cpt_rendu: Option<String>,
+    #[serde(rename = "codeTypeCptRendu")]
+    pub code_type_cpt_rendu: Option<String>,
+    #[serde(rename = "valeurCptRendu")]
+    pub valeur_cpt_rendu: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -9,6 +9,8 @@ use crate::{
     services::colis_prive_service::{ColisPriveService, ColisPriveAuthRequest, GetTourneeRequest},
     utils::extract_structured_data_for_mobile,
 };
+use std::sync::Arc;
+use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction};
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
 pub async fn authenticate_colis_prive(
@@ -140,4 +142,153 @@ pub async fn get_mobile_tournee(
             Ok(Json(error_response))
         }
     }
+}
+
+/// Endpoint estructurado para app móvil con análisis de datos GPS y metadatos
+pub async fn get_mobile_tournee_structured(
+    State(state): State<AppState>,
+    Json(request): Json<MobileTourneeRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    match ColisPriveService::get_mobile_tournee(request).await {
+        Ok(response) => {
+            if response.success {
+                // Crear respuesta estructurada para app móvil
+                let structured_response = create_mobile_structured_response(&response);
+                Ok(Json(structured_response))
+            } else {
+                let error_response = serde_json::json!({
+                    "success": false,
+                    "message": response.message,
+                    "data": null
+                });
+                Err((StatusCode::BAD_REQUEST, Json(error_response)))
+            }
+        },
+        Err(e) => {
+            let error_response = serde_json::json!({
+                "success": false,
+                "message": format!("Error getting mobile tournee: {}", e),
+                "data": null
+            });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
+    }
+}
+
+/// Función para crear respuesta estructurada con análisis de datos GPS y metadatos
+fn create_mobile_structured_response(response: &MobileTourneeResponse) -> serde_json::Value {
+    let empty_vec = Vec::new();
+    let packages = response.data.as_ref().unwrap_or(&empty_vec);
+    
+    // Análisis de datos
+    let has_gps = packages.iter().any(|p| p.coord_x_gps_cpt_rendu.is_some());
+    let action_types: std::collections::HashSet<String> = packages.iter()
+        .map(|p| p.code_cle_action.clone())
+        .collect();
+    
+    // Análisis de coordenadas GPS
+    let gps_packages: Vec<&MobilePackageAction> = packages.iter()
+        .filter(|p| p.coord_x_gps_cpt_rendu.is_some() && p.coord_y_gps_cpt_rendu.is_some())
+        .collect();
+    
+    let gps_stats = if !gps_packages.is_empty() {
+        let lats: Vec<f64> = gps_packages.iter()
+            .filter_map(|p| p.coord_y_gps_cpt_rendu)
+            .collect();
+        let lngs: Vec<f64> = gps_packages.iter()
+            .filter_map(|p| p.coord_x_gps_cpt_rendu)
+            .collect();
+        
+        serde_json::json!({
+            "total_with_gps": gps_packages.len(),
+            "coverage_percentage": (gps_packages.len() as f64 / packages.len() as f64) * 100.0,
+            "bounds": {
+                "min_lat": lats.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
+                "max_lat": lats.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b)),
+                "min_lng": lngs.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
+                "max_lng": lngs.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b))
+            }
+        })
+    } else {
+        serde_json::json!({
+            "total_with_gps": 0,
+            "coverage_percentage": 0.0,
+            "bounds": null
+        })
+    };
+    
+    serde_json::json!({
+        "success": true,
+        "metadata": {
+            "total_packages": packages.len(),
+            "has_gps_coordinates": has_gps,
+            "unique_action_types": action_types.into_iter().collect::<Vec<String>>(),
+            "tournee_id": packages.first().map(|p| &p.code_tournee_mcp),
+            "agent_id": packages.first().map(|p| &p.matricule_distributeur),
+            "gps_statistics": gps_stats
+        },
+        "packages": packages.iter().map(|package| {
+            serde_json::json!({
+                // Identificadores
+                "id": package.id_article,
+                "location_id": package.id_lieu_article,
+                "reference": package.ref_externe_article,
+                "barcode": package.code_barre_article,
+                "tournee_code": package.code_tournee_mcp,
+                
+                // Acción a realizar
+                "action": {
+                    "id": package.id_action,
+                    "code": package.code_cle_action,
+                    "label": package.libelle_action,
+                    "type": package.code_type_action,
+                    "order": package.num_ordre_action,
+                    "estimated_duration_minutes": package.duree_seconde_prevue_action.map(|d| d / 60.0)
+                },
+                
+                // Ubicación (para futuro uso con Mapbox)
+                "location": if package.coord_x_gps_cpt_rendu.is_some() {
+                    serde_json::json!({
+                        "latitude": package.coord_y_gps_cpt_rendu,
+                        "longitude": package.coord_x_gps_cpt_rendu,
+                        "gps_quality_meters": package.gps_qualite,
+                        "has_coordinates": true,
+                        "coordinates_ready_for_maps": true
+                    })
+                } else {
+                    serde_json::json!({
+                        "has_coordinates": false,
+                        "coordinates_ready_for_maps": false
+                    })
+                },
+                
+                // Información temporal
+                "timing": {
+                    "recorded_at": package.horodatage_cpt_rendu,
+                    "expected_at": package.valeur_attendu_cpt_rendu,
+                    "transmitted_at": package.date_transmis_si_tiers
+                },
+                
+                // Estado
+                "status": {
+                    "transmitted_to_third_party": package.vf_transmis_si_tiers.unwrap_or(false),
+                    "order_in_route": package.num_ordre_cpt_rendu
+                },
+                
+                // Empresa emisora
+                "sender": {
+                    "code": package.code_societe_emetrice_article,
+                    "agency": package.code_agence
+                },
+                
+                // Información adicional de seguimiento
+                "tracking": {
+                    "compteur_id": package.id_cpt_rendu,
+                    "compteur_code": package.code_cle_cpt_rendu,
+                    "compteur_type": package.code_type_cpt_rendu,
+                    "compteur_value": package.valeur_cpt_rendu
+                }
+            })
+        }).collect::<Vec<_>>()
+    })
 }

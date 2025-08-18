@@ -1,0 +1,304 @@
+# 🐳 DOCKER COMPOSE - SETUP 2 PI OPTIMIZADO
+# Arquitectura distribuida: Pi 5 (16GB) + Pi 5 (8GB) + MacBook M3
+
+version: '3.8'
+
+# =============================================================================
+# REDES PERSONALIZADAS PARA DISTRIBUCIÓN
+# =============================================================================
+networks:
+  # Red principal para comunicación entre nodos
+  delivery-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+  
+  # Red interna para servicios del nodo master
+  master-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+  
+  # Red interna para servicios del nodo compute
+  compute-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+
+# =============================================================================
+# SERVICIOS DEL NODO MASTER (Pi 5 - 16GB)
+# =============================================================================
+services:
+  # API PRINCIPAL - RUST BACKEND
+  delivery-api:
+    image: delivery-routing:latest
+    container_name: delivery-api-master
+    restart: unless-stopped
+    networks:
+      - delivery-network
+      - master-internal
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://postgres:delivery123@postgres-master:5432/delivery_db
+      - REDIS_URL=redis://redis-master:6379
+      - NODE_ROLE=master
+      - COMPUTE_NODE_URL=http://delivery-workers:3001
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    depends_on:
+      - postgres-master
+      - redis-master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # BASE DE DATOS PRINCIPAL - POSTGRESQL
+  postgres-master:
+    image: postgres:15-alpine
+    container_name: postgres-master
+    restart: unless-stopped
+    networks:
+      - master-internal
+    environment:
+      - POSTGRES_DB=delivery_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=delivery123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CACHE PRINCIPAL - REDIS
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    restart: unless-stopped
+    networks:
+      - master-internal
+    command: redis-server --appendonly yes --requirepass delivery123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # REVERSE PROXY - NGINX
+  nginx-master:
+    image: nginx:alpine
+    container_name: nginx-master
+    restart: unless-stopped
+    networks:
+      - delivery-network
+      - master-internal
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - delivery-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MONITORING BÁSICO - PROMETHEUS
+  prometheus-master:
+    image: prom/prometheus:latest
+    container_name: prometheus-master
+    restart: unless-stopped
+    networks:
+      - master-internal
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# =============================================================================
+# SERVICIOS DEL NODO COMPUTE (Pi 5 - 8GB)
+# =============================================================================
+  # WORKERS DE OPTIMIZACIÓN
+  delivery-workers:
+    image: delivery-routing:latest
+    container_name: delivery-workers-compute
+    restart: unless-stopped
+    networks:
+      - delivery-network
+      - compute-internal
+    ports:
+      - "3001:3001"
+    environment:
+      - RUST_LOG=info
+      - NODE_ROLE=compute
+      - WORKER_POOL_SIZE=8
+      - MASTER_NODE_URL=http://delivery-api:3000
+      - REDIS_URL=redis://redis-compute:6380
+      - DATABASE_URL=postgresql://postgres:delivery123@postgres-compute:5433/delivery_db
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    depends_on:
+      - redis-compute
+      - postgres-compute
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CACHE DISTRIBUIDO - REDIS COMPUTE
+  redis-compute:
+    image: redis:7-alpine
+    container_name: redis-compute
+    restart: unless-stopped
+    networks:
+      - compute-internal
+    command: redis-server --appendonly yes --requirepass delivery123 --port 6380
+    volumes:
+      - redis_compute_data:/data
+    ports:
+      - "6380:6380"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # REPLICA DE BASE DE DATOS - POSTGRESQL COMPUTE
+  postgres-compute:
+    image: postgres:15-alpine
+    container_name: postgres-compute
+    restart: unless-stopped
+    networks:
+      - compute-internal
+    environment:
+      - POSTGRES_DB=delivery_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=delivery123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_compute_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MÉTRICAS DE WORKERS - PROMETHEUS COMPUTE
+  prometheus-compute:
+    image: prom/prometheus:latest
+    container_name: prometheus-compute
+    restart: unless-stopped
+    networks:
+      - compute-internal
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus-compute.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_compute_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LOAD TESTING TOOLS
+  load-testing:
+    image: grafana/k6:latest
+    container_name: load-testing
+    restart: unless-stopped
+    networks:
+      - delivery-network
+    ports:
+      - "6565:6565"
+    volumes:
+      - ./load-tests:/scripts:ro
+    environment:
+      - K6_OUT=prometheus=prometheus://prometheus-master:9090
+    command: k6 run --out prometheus=prometheus://prometheus-master:9090 /scripts/load-test.js
+
+# =============================================================================
+# VOLÚMENES PERSISTENTES
+# =============================================================================
+volumes:
+  # Datos del nodo master
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  
+  # Datos del nodo compute
+  postgres_compute_data:
+    driver: local
+  redis_compute_data:
+    driver: local
+  prometheus_compute_data:
+    driver: local
+
+# =============================================================================
+# CONFIGURACIONES ADICIONALES
+# =============================================================================
+# Configuración de recursos por nodo
+# Pi 5 (16GB) - Master: ~12GB disponible para servicios
+# Pi 5 (8GB) - Compute: ~6GB disponible para workers
+
+# Configuración de replicación PostgreSQL
+# La replica se configurará manualmente después del primer deploy
+
+# Configuración de Redis cluster
+# Master-Slave con sincronización automática
