@@ -41,6 +41,34 @@ pub struct LoginResponse {
     pub user: UserResponse,
 }
 
+/// Response de login optimizado para Android con token en múltiples ubicaciones
+#[derive(Debug, Serialize)]
+pub struct LoginResponseFlexible {
+    pub success: bool,
+    pub status: String,           // "200"
+    pub code: String,            // "200" 
+    pub token: String,           // Token directo en raíz
+    pub message: String,         // Mensaje directo en raíz
+    pub authentication: Option<AuthInfo>,
+    pub credentials_used: Option<CredentialsUsed>,
+    pub timestamp: String,
+}
+
+/// Información de autenticación
+#[derive(Debug, Serialize)]
+pub struct AuthInfo {
+    pub token: String,
+    pub matricule: String,
+    pub message: String,
+}
+
+/// Credenciales utilizadas
+#[derive(Debug, Serialize)]
+pub struct CredentialsUsed {
+    pub username: String,
+    pub timestamp: String,
+}
+
 /// Request para refresh token
 #[derive(Debug, Deserialize, Validate)]
 pub struct RefreshTokenRequest {
@@ -75,7 +103,7 @@ pub struct RegisterRequest {
 pub async fn login(
     State(app_state): State<AppState>,
     Json(login_data): Json<LoginRequest>,
-) -> AppResult<Json<LoginResponse>> {
+) -> AppResult<Json<LoginResponseFlexible>> {
     let pool = &app_state.pool;
     let config = &app_state.config;
     // Validar datos de entrada
@@ -140,11 +168,23 @@ pub async fn login(
     // Convertir a response
     let user_response = UserResponse::from(user);
 
-    let response = LoginResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in: jwt_config.expiration,
-        user: user_response,
+    // Respuesta MÁS COMPATIBLE para Android
+    let response = LoginResponseFlexible {
+        success: true,
+        status: "200".to_string(),
+        code: "200".to_string(),
+        token: access_token.clone(),      // TOKEN EN RAÍZ
+        message: "Login exitoso".to_string(),  // MESSAGE EN RAÍZ
+        authentication: Some(AuthInfo {
+            token: access_token.clone(),   // TOKEN TAMBIÉN EN AUTH
+            matricule: user_response.username.clone(),
+            message: "Autenticación exitosa".to_string(),
+        }),
+        credentials_used: Some(CredentialsUsed {
+            username: login_data.username.clone(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
     Ok(Json(response))
@@ -154,7 +194,7 @@ pub async fn login(
 pub async fn register(
     State(app_state): State<AppState>,
     Json(register_data): Json<RegisterRequest>,
-) -> AppResult<Json<LoginResponse>> {
+) -> AppResult<Json<LoginResponseFlexible>> {
     let pool = &app_state.pool;
     let config = &app_state.config;
     // Validar datos de entrada
@@ -237,11 +277,23 @@ pub async fn register(
     // Convertir a response
     let user_response = UserResponse::from(new_user);
 
-    let response = LoginResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in: jwt_config.expiration,
-        user: user_response,
+    // Respuesta MÁS COMPATIBLE para Android
+    let response = LoginResponseFlexible {
+        success: true,
+        status: "200".to_string(),
+        code: "200".to_string(),
+        token: access_token.clone(),      // TOKEN EN RAÍZ
+        message: "Registro exitoso".to_string(),  // MESSAGE EN RAÍZ
+        authentication: Some(AuthInfo {
+            token: access_token.clone(),   // TOKEN TAMBIÉN EN AUTH
+            matricule: user_response.username.clone(),
+            message: "Usuario registrado exitosamente".to_string(),
+        }),
+        credentials_used: Some(CredentialsUsed {
+            username: register_data.username.clone(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
     Ok(Json(response))

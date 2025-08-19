@@ -79,6 +79,7 @@ async fn main() -> Result<()> {
         // .route("/api/colis-prive/tournee/cached", post(get_tournee_data_cached))
         .route("/api/colis-prive/mobile-tournee", post(get_mobile_tournee))
         .route("/api/colis-prive/mobile-tournee-structured", post(colis_prive::get_mobile_tournee_structured))
+        .route("/api/colis-prive/mobile-tournee-updated", post(colis_prive::mobile_tournee_updated))
         .route("/api/colis-prive/health", get(health_check))
         .route("/api/migration/status", get(get_migration_status))
         .route("/api/migration/strategy", post(change_migration_strategy))
@@ -101,6 +102,7 @@ async fn main() -> Result<()> {
     // info!("   POST /api/colis-prive/tournee/cached - Tournée Colis Privé con cache");
     info!("   POST /api/colis-prive/mobile-tournee - Tournée Móvil Colis Privé");
     info!("   POST /api/colis-prive/mobile-tournee-structured - Tournée Móvil Colis Privé Estructurada");
+    info!("   POST /api/colis-prive/mobile-tournee-updated - Tournée Móvil Colis Privé Actualizada");
     info!("   GET  /api/colis-prive/health - Health check Colis Privé");
     info!("   GET  /api/migration/status - Estado de migración");
     info!("   POST /api/migration/strategy - Cambiar estrategia");

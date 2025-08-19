@@ -11,6 +11,9 @@ use crate::{
 };
 use std::sync::Arc;
 use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction};
+use serde::Deserialize;
+use serde::Serialize;
+use validator::Validate;
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
 pub async fn authenticate_colis_prive(
@@ -171,6 +174,220 @@ pub async fn get_mobile_tournee_structured(
                 "data": null
             });
             Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
+    }
+}
+
+/// Request para tournée actualizada con datos GPS en tiempo real
+#[derive(Debug, Deserialize, Validate)]
+pub struct TourneeUpdateRequest {
+    #[serde(rename = "DateDebut")]
+    #[validate(length(min = 1))]
+    pub date_debut: String,
+    
+    #[serde(rename = "Matricule")]
+    #[validate(length(min = 1))]
+    pub matricule: String,
+    
+    #[serde(rename = "Password")]
+    #[validate(length(min = 3))]
+    pub password: String,
+    
+    #[serde(rename = "Societe")]
+    #[validate(length(min = 1))]
+    pub societe: String,
+}
+
+/// Response para tournée actualizada
+#[derive(Debug, Serialize)]
+pub struct TourneeResponse {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<serde_json::Value>,
+    pub gps_coordinates: Option<Vec<GpsCoordinates>>,
+    pub timestamp: String,
+}
+
+/// Estructura para coordenadas GPS
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GpsCoordinates {
+    #[serde(rename = "coordXGPSCptRendu")]
+    pub longitude: Option<f64>,
+    #[serde(rename = "coordYGPSCptRendu")]
+    pub latitude: Option<f64>,
+    #[serde(rename = "gpsQualite")]
+    pub quality_meters: Option<String>,
+    #[serde(rename = "horodatageCptRendu")]
+    pub timestamp: Option<String>,
+    pub package_id: Option<String>,
+    pub tournee_code: Option<String>,
+}
+
+/// Validar coordenadas GPS para Francia
+pub fn validate_gps_coordinates(coords: &GpsCoordinates) -> bool {
+    if let (Some(lat), Some(lng)) = (coords.latitude, coords.longitude) {
+        // Validar coordenadas para Francia
+        lat >= 41.0 && lat <= 51.5 && lng >= -5.0 && lng <= 10.0
+    } else {
+        false
+    }
+}
+
+/// Extraer calidad GPS en metros
+pub fn extract_gps_quality(quality_str: &Option<String>) -> Option<f64> {
+    quality_str.as_ref()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&q| q < 50.0) // Solo coordenadas con buena precisión
+}
+
+/// Transformar coordenadas de Colis Privé a formato estándar
+pub fn transform_colis_prive_coordinates(
+    coord_x: Option<f64>,
+    coord_y: Option<f64>,
+    quality: Option<String>,
+) -> Option<GpsCoordinates> {
+    if let (Some(lng), Some(lat)) = (coord_x, coord_y) {
+        // Validar que las coordenadas estén en rango de Francia
+        if lat >= 41.0 && lat <= 51.5 && lng >= -5.0 && lng <= 10.0 {
+            Some(GpsCoordinates {
+                longitude: Some(lng),
+                latitude: Some(lat),
+                quality_meters: quality,
+                timestamp: Some(chrono::Utc::now().to_rfc3339()),
+                package_id: None,
+                tournee_code: None,
+            })
+        } else {
+            None // Coordenadas fuera de rango
+        }
+    } else {
+        None // Coordenadas faltantes
+    }
+}
+
+/// Extraer username completo del matricule (formato: PCP0010699_A187518 -> PCP0010699_A187518)
+fn extract_username_from_matricule(matricule: &str) -> String {
+    // Para Colis Privé, necesitamos el username COMPLETO, no solo la parte del tournée
+    // El matricule ya es el username completo: PCP0010699_A187518
+    matricule.to_string()
+}
+
+/// Endpoint para obtener tournée actualizada con datos GPS en tiempo real
+pub async fn mobile_tournee_updated(
+    State(_state): State<AppState>,
+    Json(request): Json<TourneeUpdateRequest>,
+) -> Result<Json<TourneeResponse>, StatusCode> {
+    // Logging detallado para debug
+    tracing::info!("=== REQUEST RECIBIDO ===");
+    tracing::info!("Request completo: {:?}", request);
+    tracing::info!("DateDebut: '{}'", request.date_debut);
+    tracing::info!("Matricule: '{}'", request.matricule);
+    tracing::info!("Password: '{}' (length: {})", request.password, request.password.len());
+    tracing::info!("Societe: '{}'", request.societe);
+    tracing::info!("=========================");
+    
+    // Validar el request
+    if let Err(validation_errors) = request.validate() {
+        tracing::error!("Error de validación: {:?}", validation_errors);
+        let error_response = TourneeResponse {
+            success: false,
+            message: format!("Error de validación: {:?}", validation_errors),
+            data: None,
+            gps_coordinates: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        return Ok(Json(error_response));
+    }
+    
+    // Crear credenciales usando los datos del request
+    let username_completo = extract_username_from_matricule(&request.matricule);
+    let credentials = crate::external_models::ColisPriveCredentials {
+        username: username_completo.clone(),
+        password: request.password.clone(),
+        societe: request.societe.clone(),
+    };
+    
+    tracing::info!("=== CREDENCIALES COLIS PRIVÉ ===");
+    tracing::info!("Username completo: '{}'", username_completo);
+    tracing::info!("Societe: '{}'", credentials.societe);
+    tracing::info!("Password length: {}", credentials.password.len());
+    tracing::info!("================================");
+
+    // Crear request para el servicio móvil
+    let mobile_request = crate::external_models::MobileTourneeRequest {
+        username: credentials.username.clone(),
+        password: credentials.password.clone(),
+        societe: credentials.societe.clone(),
+        date: request.date_debut.clone(),
+        matricule: request.matricule.clone(),
+    };
+    
+    tracing::info!("=== REQUEST MÓVIL COLIS PRIVÉ ===");
+    tracing::info!("Username completo: '{}'", mobile_request.username);
+    tracing::info!("Societe: '{}'", mobile_request.societe);
+    tracing::info!("Date: '{}'", mobile_request.date);
+    tracing::info!("Matricule: '{}'", mobile_request.matricule);
+    tracing::info!("===================================");
+
+    tracing::info!("Llamando al servicio Colis Privé...");
+    match crate::services::ColisPriveService::get_mobile_tournee(mobile_request).await {
+        Ok(response) => {
+            tracing::info!("Respuesta del servicio: success={}, message='{}', total_packages={}", 
+                           response.success, response.message, response.total_packages);
+            
+            if response.success {
+                // Extraer coordenadas GPS de los paquetes con validación
+                let gps_coordinates = response.data.as_ref()
+                    .map(|packages| {
+                        packages.iter()
+                            .filter_map(|package| {
+                                // Usar función de transformación con validación
+                                transform_colis_prive_coordinates(
+                                    package.coord_x_gps_cpt_rendu,
+                                    package.coord_y_gps_cpt_rendu,
+                                    package.gps_qualite.clone(),
+                                ).map(|mut coords| {
+                                    // Agregar información adicional del paquete
+                                    coords.package_id = Some(package.id_article.clone());
+                                    coords.tournee_code = Some(package.code_tournee_mcp.clone());
+                                    coords.timestamp = package.horodatage_cpt_rendu.clone();
+                                    coords
+                                })
+                            })
+                            .filter(|coords| validate_gps_coordinates(coords)) // Solo coordenadas válidas
+                            .collect()
+                    });
+
+                let tournee_response = TourneeResponse {
+                    success: true,
+                    message: "Tournée actualizada obtenida exitosamente".to_string(),
+                    data: Some(serde_json::to_value(&response).unwrap_or_default()),
+                    gps_coordinates,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+
+                Ok(Json(tournee_response))
+            } else {
+                let error_response = TourneeResponse {
+                    success: false,
+                    message: response.message,
+                    data: None,
+                    gps_coordinates: None,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                Ok(Json(error_response))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Error obteniendo tournée actualizada: {}", e);
+            let error_response = TourneeResponse {
+                success: false,
+                message: format!("Error interno del servidor: {}", e),
+                data: None,
+                gps_coordinates: None,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            };
+            Ok(Json(error_response))
         }
     }
 }
