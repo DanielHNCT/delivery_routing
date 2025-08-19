@@ -49,6 +49,33 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    
+    // Compose Lifecycle
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+    
+    // Networking
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.okhttp.tls)
+    
+    // SOAP Support (alternativa moderna)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // Gson
+    implementation("com.google.code.gson:gson:2.10.1")
+    
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    
+    // RecyclerView y SwipeRefresh (para futuras implementaciones)
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.swiperefreshlayout)
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
