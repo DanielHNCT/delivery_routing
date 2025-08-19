@@ -273,3 +273,156 @@ pub struct ColisPriveCredentials {
     pub password: String,
     pub societe: String,
 }
+
+// Nuevas estructuras para flujo completo de autenticación
+#[derive(Serialize)]
+pub struct ColisLoginRequest {
+    pub audit: AuditData,
+    pub commun: CommunData,
+    pub login: String,
+    pub password: String,
+    pub societe: String,
+}
+
+#[derive(Serialize)]
+pub struct AuditData {
+    #[serde(rename = "appName")]
+    pub app_name: String,
+    pub cle1: String,
+    pub cle2: String,
+    pub cle3: String,
+    #[serde(rename = "deviceModelName")]
+    pub device_model_name: String,
+    pub iccid: String,
+    pub imei: String,
+    pub msisdn: String,
+    #[serde(rename = "noSerie")]
+    pub no_serie: String,
+}
+
+#[derive(Serialize)]
+pub struct CommunData {
+    #[serde(rename = "dureeTokenInHour")]
+    pub duree_token_in_hour: u32,
+}
+
+// Estructura para Device Audit
+#[derive(Serialize)]
+pub struct DeviceAuditRequest {
+    #[serde(rename = "deviceCPU")]
+    pub device_cpu: String,
+    #[serde(rename = "deviceDisk")]
+    pub device_disk: String,
+    #[serde(rename = "deviceIdDevice")]
+    pub device_id_device: String,
+    #[serde(rename = "deviceLangue")]
+    pub device_langue: String,
+    #[serde(rename = "deviceOs")]
+    pub device_os: String,
+    #[serde(rename = "deviceRam")]
+    pub device_ram: String,
+    #[serde(rename = "deviceVersion")]
+    pub device_version: String,
+    #[serde(rename = "idExterneApplication")]
+    pub id_externe_application: String,
+    #[serde(rename = "isInstallOK")]
+    pub is_install_ok: bool,
+    pub matricule: String,
+    #[serde(rename = "numApplicationVersion")]
+    pub num_application_version: String,
+}
+
+// Estructura para Version Check Response
+#[derive(Deserialize)]
+pub struct VersionCheckResponse {
+    #[serde(rename = "ApplicationVersion_id")]
+    pub application_version_id: Option<u32>,
+    #[serde(rename = "IsObligatoire")]
+    pub is_obligatoire: Option<bool>,
+    #[serde(rename = "Action")]
+    pub action: Option<String>,
+}
+
+// Estructura para respuesta de login actualizada
+#[derive(Deserialize)]
+pub struct ColisLoginResponse {
+    #[serde(rename = "isAuthentif")]
+    pub is_ok: bool,
+    pub code: u32,
+    pub duration: Option<u32>,
+    #[serde(rename = "type")]
+    pub error_type: Option<String>,
+    #[serde(rename = "errorBody")]
+    pub error_body: Option<String>,
+    pub data: Option<serde_json::Value>,
+    #[serde(rename = "titreFromBean")]
+    pub titre_from_bean: Option<String>,
+    #[serde(rename = "errorMessageFromBean")]
+    pub error_message_from_bean: Option<String>,
+    pub exception: Option<String>,
+}
+
+// Estructuras para sistema de tokens con auto-refresh
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RefreshTokenRequest {
+    #[serde(rename = "dureeTokenInHour")]
+    pub duree_token_in_hour: u32,
+    pub token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TourneeRequestWithToken {
+    pub username: String,
+    pub password: String,
+    pub societe: String,
+    pub date: String,
+    pub matricule: String,
+    pub token: Option<String>, // Token opcional para retry
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ColisAuthResponse {
+    #[serde(rename = "infoConsolidee")]
+    pub info_consolidee: Option<String>,
+    #[serde(rename = "isAuthentif")]
+    pub is_authentif: bool,
+    #[serde(rename = "accountExpirationDate")]
+    pub account_expiration_date: Option<String>,
+    #[serde(rename = "roleSGBD")]
+    pub role_sgbd: Option<Vec<String>>,
+    #[serde(rename = "roleSI")]
+    pub role_si: Option<String>,
+    pub identity: Option<String>,
+    #[serde(rename = "isAdminMetier")]
+    pub is_admin_metier: bool,
+    #[serde(rename = "isAdminIndiana")]
+    pub is_admin_indiana: bool,
+    pub matricule: Option<String>,
+    pub nom: Option<String>,
+    pub prenom: Option<String>,
+    #[serde(rename = "codeAnalytique")]
+    pub code_analytique: Option<String>,
+    pub domaine: Option<String>,
+    pub tenant: Option<String>,
+    pub societe: Option<String>,
+    #[serde(rename = "libelleSociete")]
+    pub libelle_societe: Option<String>,
+    #[serde(rename = "typeClient")]
+    pub type_client: Option<String>,
+    #[serde(rename = "habilitationAD")]
+    pub habilitation_ad: Option<serde_json::Value>,
+    #[serde(rename = "habilitationInterprete")]
+    pub habilitation_interprete: Option<serde_json::Value>,
+    pub roles: Option<Vec<String>>,
+    pub tokens: TokenData,
+    #[serde(rename = "shortToken")]
+    pub short_token: TokenData,
+    #[serde(rename = "profilUtilisateur")]
+    pub profil_utilisateur: Option<Vec<serde_json::Value>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenData {
+    #[serde(rename = "SsoHopps")]
+    pub sso_hopps: String,
+}
