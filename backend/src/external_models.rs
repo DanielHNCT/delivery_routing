@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -364,7 +365,7 @@ pub struct ColisLoginResponse {
 
 // Estructuras para sistema de tokens con auto-refresh
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RefreshTokenRequest {
+pub struct RefreshTokenRequestLegacy {
     #[serde(rename = "dureeTokenInHour")]
     pub duree_token_in_hour: u32,
     pub token: String,
@@ -425,4 +426,51 @@ pub struct ColisAuthResponse {
 pub struct TokenData {
     #[serde(rename = "SsoHopps")]
     pub sso_hopps: String,
+}
+
+/// Información del dispositivo Android para headers dinámicos
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceInfo {
+    /// Modelo del dispositivo (ej: "Samsung SM-S916B", "Google Pixel 7")
+    pub model: String,
+    /// IMEI del dispositivo (real o fake consistente)
+    pub imei: String,
+    /// Número de serie del dispositivo
+    pub serial_number: String,
+    /// Versión de Android (ej: "13", "14")
+    pub android_version: String,
+    /// ID único de instalación de la app
+    pub install_id: String,
+}
+
+/// Request de autenticación con Colis Privé incluyendo device info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColisAuthRequest {
+    pub username: String,
+    pub password: String,
+    pub societe: String,
+    /// Información del dispositivo para headers dinámicos
+    pub device_info: DeviceInfo,
+}
+
+/// Request de refresh token con device info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshTokenRequest {
+    pub token: String,
+    /// Información del dispositivo para headers dinámicos
+    pub device_info: DeviceInfo,
+}
+
+/// Request de tournée con auto-retry incluyendo device info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TourneeRequestWithRetry {
+    pub username: String,
+    pub password: String,
+    pub societe: String,
+    pub date: String,
+    pub matricule: String,
+    /// Token opcional (si no hay, se hace login automático)
+    pub token: Option<String>,
+    /// Información del dispositivo para headers dinámicos
+    pub device_info: DeviceInfo,
 }

@@ -1,0 +1,110 @@
+# 🚀 PROMPT PARA ANDROID - CORRECCIÓN PARSING JSON
+
+## 🎯 PROBLEMA IDENTIFICADO:
+
+La autenticación con Colis Privé SÍ está funcionando (200 OK), pero hay un **mismatch en el parsing JSON** que causa que Android interprete la respuesta como fallida.
+
+## 📊 ANÁLISIS DE LOGS:
+
+### ✅ LO QUE FUNCIONA:
+- **Autenticación**: 200 OK exitoso
+- **Headers**: Todos correctos
+- **SsoHopps Token**: Obtenido exitosamente
+- **Respuesta**: 2051 bytes completos
+
+### ❌ LO QUE FALLA:
+**Android espera `isOk` pero el servidor devuelve `isAuthentif`**
+
+## 🔧 SOLUCIÓN REQUERIDA:
+
+### 1. CORREGIR ESTRUCTURA ColisLoginResponse:
+
+```kotlin
+// ❌ ESTRUCTURA ACTUAL (INCORRECTA):
+@Serializable
+data class ColisLoginResponse(
+    @SerialName("isOk")
+    val isOk: Boolean,
+    val code: Int,
+    val duration: Int?,
+    val type: String?,
+    val errorBody: String?,
+    val data: String?,
+    val titreFromBean: String?,
+    val errorMessageFromBean: String?,
+    val exception: String?
+)
+
+// ✅ ESTRUCTURA CORREGIDA:
+@Serializable
+data class ColisLoginResponse(
+    @SerialName("isAuthentif")  // ← CAMBIAR AQUÍ
+    val isAuthentif: Boolean,   // ← CAMBIAR AQUÍ
+    val code: Int,
+    val duration: Int?,
+    val type: String?,
+    val errorBody: String?,
+    val data: String?,
+    val titreFromBean: String?,
+    val errorMessageFromBean: String?,
+    val exception: String?
+)
+```
+
+### 2. ACTUALIZAR LÓGICA DE VALIDACIÓN:
+
+```kotlin
+// ❌ LÓGICA ACTUAL:
+if (response.isOk) {
+    // Éxito
+} else {
+    // Fallo
+}
+
+// ✅ LÓGICA CORREGIDA:
+if (response.isAuthentif) {  // ← CAMBIAR AQUÍ
+    // Éxito
+} else {
+    // Fallo
+}
+```
+
+### 3. VERIFICAR CAMPOS ADICIONALES:
+
+El servidor devuelve campos adicionales que pueden ser útiles:
+
+```json
+{
+  "isAuthentif": true,
+  "identity": "PCP0010699_A187518",
+  "matricule": "PCP0010699_A187518",
+  "tokens": {
+    "SsoHopps": "G64/NeajZhaNXwsVTDcYFUoF/pCtqcfl5VaIvx53yXFL5f2seSutbnDuEJ8O1e/VQehtNjtZ2g5gY9ZUJJ9APggI/..."
+  },
+  "shortToken": {
+    "SsoHopps": "TWVtYmVyc2hpcC1QQ1AwMDEwNjk5X0ExODc1MTgtMjAyNS0wOC0xOS0yMS0wNS0yOS0yMDI1LTA5LTA5LTIxLTA1LTI5LTEzMw=="
+  }
+}
+```
+
+## 📱 ARCHIVOS A MODIFICAR:
+
+1. **ColisLoginResponse.kt** - Cambiar `isOk` por `isAuthentif`
+2. **ColisRepository.kt** - Actualizar lógica de validación
+3. **ColisAuthViewModel.kt** - Verificar uso de la respuesta
+
+## 🎯 RESULTADO ESPERADO:
+
+Después de la corrección, Android debería:
+- ✅ Parsear correctamente la respuesta JSON
+- ✅ Reconocer la autenticación exitosa (`isAuthentif: true`)
+- ✅ Obtener el token SsoHopps correctamente
+- ✅ Proceder con las siguientes operaciones
+
+## 📋 RESUMEN:
+
+**El backend ya está funcionando perfectamente** con el flujo completo de autenticación Colis Privé. Solo necesitas corregir el parsing JSON en Android para que reconozca `isAuthentif` en lugar de `isOk`.
+
+---
+
+**¡La autenticación ya funciona! Solo es un problema de parsing en el cliente Android.**

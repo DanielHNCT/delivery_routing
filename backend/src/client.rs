@@ -1,6 +1,7 @@
 use crate::external_models::{
     MobilePackageAction, ColisPriveCredentials, LoginRequest, 
-    LoginResponse, RefreshTokenRequest, ColisAuthResponse, Commun, TourneeRequest
+    LoginResponse, RefreshTokenRequest, ColisAuthResponse, Commun, TourneeRequest,
+    DeviceInfo
 };
 use anyhow::Result;
 use base64::Engine;
@@ -9,96 +10,33 @@ use serde_json::json;
 use std::time::Duration;
 use uuid::Uuid;
 use tracing::{info, warn, error, debug, instrument};
+use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client};
 
 pub struct ColisPriveClient {
     pub client: Client,
     pub auth_base_url: String,
     pub tournee_base_url: String,
     sso_token: Option<String>,
-    activity_id: String, // UUID único por sesión
+    device_info: DeviceInfo, // Device info dinámico
 }
 
 impl ColisPriveClient {
-    pub fn new() -> Result<Self> {
-        // Configurar cliente con SSL bypass y headers específicos
-        let client = reqwest::Client::builder()
-            .http1_only() // Forzar HTTP/1.1
-            .http1_title_case_headers() // Headers en formato correcto
-            .cookie_store(true) // Mantener cookies de sesión
-            .danger_accept_invalid_certs(true) // SSL bypass
-            .danger_accept_invalid_hostnames(true) // Hostnames inválidos
-            .timeout(Duration::from_secs(30)) // Timeout de 30 segundos
-            .build()?;
+    pub fn new(device_info: DeviceInfo) -> Result<Self> {
+        // Usar la función de headers para crear cliente con SSL bypass
+        let client = create_colis_client()?;
 
         Ok(Self {
             client,
             auth_base_url: "https://wsauthentificationexterne.colisprive.com".to_string(),
             tournee_base_url: "https://wstournee-v2.colisprive.com".to_string(),
             sso_token: None,
-            activity_id: Uuid::new_v4().to_string(), // UUID único por sesión
+            device_info,
         })
     }
 
-    /// Obtener headers exactos de la app oficial de Colis Privé
+    /// Obtener headers exactos de la app oficial de Colis Privé usando device info dinámico
     fn get_colis_headers(&self, endpoint: &str, username: Option<&str>, token: Option<&str>) -> reqwest::header::HeaderMap {
-        let mut headers = reqwest::header::HeaderMap::new();
-        let activity_id = Uuid::new_v4().to_string(); // UUID único por request
-        
-        // CORE HEADERS (todos los endpoints)
-        headers.insert("Accept-Charset", "UTF-8".parse().unwrap());
-        headers.insert("Content-Type", "application/json; charset=UTF-8".parse().unwrap());
-        headers.insert("Connection", "Keep-Alive".parse().unwrap());
-        headers.insert("Accept-Encoding", "gzip".parse().unwrap());
-        headers.insert("User-Agent", "okhttp/3.4.1".parse().unwrap());
-        
-        // APP IDENTIFICATION (exactamente como la app oficial)
-        headers.insert("ActivityId", activity_id.parse().unwrap());
-        headers.insert("AppName", "CP DISTRI V2".parse().unwrap());
-        headers.insert("AppIdentifier", "com.danem.cpdistriv2".parse().unwrap());
-        headers.insert("Device", "Sony D5503".parse().unwrap());
-        headers.insert("VersionOS", "5.1.1".parse().unwrap());
-        headers.insert("VersionApplication", "3.3.0.9".parse().unwrap()); // CRÍTICO
-        headers.insert("VersionCode", "1".parse().unwrap());
-        headers.insert("Domaine", "Membership".parse().unwrap());
-        
-        // USER CONTEXT (cuando aplique)
-        if let Some(username) = username {
-            // Solo username sin prefijo (ej: "A187518" no "PCP0010699_A187518")
-            let clean_username = username.split('_').last().unwrap_or(username);
-            headers.insert("UserName", clean_username.parse().unwrap());
-            headers.insert("Societe", "PCP0010699".parse().unwrap());
-        }
-        
-        // TOKEN (solo en requests autenticados)
-        if let Some(token) = token {
-            headers.insert("SsoHopps", token.parse().unwrap());
-        }
-        
-        // HEADERS ESPECÍFICOS POR ENDPOINT
-        match endpoint {
-            "auth" | "login" => {
-                headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
-                headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
-                headers.insert("Cache-Control", "no-cache".parse().unwrap());
-                headers.insert("Pragma", "no-cache".parse().unwrap());
-                headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
-                headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
-            }
-            "refresh" => {
-                // Para refresh token, no agregar headers adicionales
-                // Solo los core headers son necesarios
-            }
-            "tournee" => {
-                // Para tournée, agregar headers específicos si es necesario
-                headers.insert("X-Requested-With", "XMLHttpRequest".parse().unwrap());
-                headers.insert("X-Device-Info", "Android".parse().unwrap());
-            }
-            _ => {
-                // Headers por defecto para otros endpoints
-            }
-        }
-        
-        headers
+        get_colis_headers(endpoint, &self.device_info, username, token)
     }
 
     /// Obtener headers comunes para todas las requests (método legacy - mantener compatibilidad)
@@ -114,10 +52,14 @@ impl ColisPriveClient {
             endpoint = "login",
             username = %login,
             societe = %societe,
-            "Starting Colis Privé authentication"
+            device_model = %self.device_info.model,
+            "Starting Colis Privé authentication with dynamic device info"
         );
         
         let url = format!("{}/api/auth/login/Membership", self.auth_base_url);
+        
+        // Crear audit data usando device info real
+        let audit_data = create_audit_data(&self.device_info);
         
         let login_req = LoginRequest {
             login: login.to_string(),
@@ -132,7 +74,8 @@ impl ColisPriveClient {
             endpoint = "login",
             url = %url,
             request_body = ?login_req,
-            "Sending authentication request"
+            audit_data = ?audit_data,
+            "Sending authentication request with dynamic audit data"
         );
 
         let headers = self.get_colis_headers("login", Some(login), None);
@@ -142,7 +85,8 @@ impl ColisPriveClient {
             headers_count = headers.len(),
             has_activity_id = headers.contains_key("ActivityId"),
             has_app_name = headers.contains_key("AppName"),
-            "Using authentication headers"
+            device_model = %self.device_info.model,
+            "Using authentication headers with dynamic device info"
         );
 
         let response = self.client
@@ -160,6 +104,7 @@ impl ColisPriveClient {
             status = %status,
             duration_ms = duration.as_millis(),
             success = status.is_success(),
+            device_model = %self.device_info.model,
             "Authentication response received"
         );
 
@@ -170,6 +115,7 @@ impl ColisPriveClient {
                 status = %status,
                 error_body = %error_body,
                 duration_ms = duration.as_millis(),
+                device_model = %self.device_info.model,
                 "Authentication failed"
             );
             anyhow::bail!(
@@ -190,7 +136,8 @@ impl ColisPriveClient {
             token_preview = %token_preview,
             token_length = login_response.tokens.SsoHopps.len(),
             duration_ms = duration.as_millis(),
-            "Authentication successful"
+            device_model = %self.device_info.model,
+            "Authentication successful with dynamic device info"
         );
         
         // Ahora usamos el token real de la respuesta

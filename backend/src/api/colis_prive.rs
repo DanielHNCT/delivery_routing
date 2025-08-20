@@ -10,7 +10,7 @@ use crate::{
     utils::extract_structured_data_for_mobile,
 };
 use std::sync::Arc;
-use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, ColisAuthResponse};
+use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse};
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
 pub async fn authenticate_colis_prive(
@@ -134,8 +134,17 @@ pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, Statu
     
     let start_time = std::time::Instant::now();
     
+    // Crear DeviceInfo de prueba para health check
+    let test_device_info = crate::external_models::DeviceInfo {
+        model: "Test Device".to_string(),
+        imei: "000000000000000".to_string(),
+        serial_number: "test123".to_string(),
+        android_version: "14".to_string(),
+        install_id: "test-install-id".to_string(),
+    };
+    
     // Crear cliente para test de conectividad
-    let client = match crate::client::ColisPriveClient::new() {
+    let client = match crate::client::ColisPriveClient::new(test_device_info) {
         Ok(client) => client,
         Err(e) => {
             return Ok(Json(json!({
@@ -355,12 +364,12 @@ pub async fn refresh_colis_prive_token(
         endpoint = "refresh_token",
         token_preview = %&request.token[..20.min(request.token.len())],
         token_length = request.token.len(),
-        duree_token_in_hour = request.duree_token_in_hour,
-        "Starting Colis Privé token refresh"
+        device_model = %request.device_info.model,
+        "Starting Colis Privé token refresh with dynamic device info"
     );
     
-    // Crear cliente con SSL bypass y headers exactos
-    let mut client = crate::client::ColisPriveClient::new()
+    // Crear cliente con SSL bypass y headers exactos usando device info
+    let mut client = crate::client::ColisPriveClient::new(request.device_info.clone())
         .map_err(|e| {
             error!(
                 error = %e,
@@ -370,15 +379,16 @@ pub async fn refresh_colis_prive_token(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     
-    // Request body exacto como especificaste
+    // Request body exacto como especificaste (dureeTokenInHour fijo en 0)
     let refresh_request = json!({
-        "dureeTokenInHour": request.duree_token_in_hour,
+        "dureeTokenInHour": 0,
         "token": request.token
     });
     
     debug!(
         url = "https://wsauthentificationexterne.colisprive.com/api/auth/login-token",
         body_size = refresh_request.to_string().len(),
+        device_model = %request.device_info.model,
         "Sending refresh token request to Colis Privé"
     );
     
@@ -431,7 +441,7 @@ pub async fn refresh_colis_prive_token(
 /// POST /api/colis-prive/mobile-tournee-with-retry - Tournée móvil con auto-retry
 pub async fn mobile_tournee_with_retry(
     State(_state): State<AppState>,
-    Json(request): Json<TourneeRequestWithToken>,
+    Json(request): Json<TourneeRequestWithRetry>,
 ) -> Result<Json<MobileTourneeResponse>, StatusCode> {
     use tracing::{info, warn, error, debug};
     
@@ -441,10 +451,11 @@ pub async fn mobile_tournee_with_retry(
         matricule = %request.matricule,
         date = %request.date,
         has_token = request.token.is_some(),
-        "Starting mobile tournée with auto-retry"
+        device_model = %request.device_info.model,
+        "Starting mobile tournée with auto-retry using dynamic device info"
     );
     
-    let mut client = crate::client::ColisPriveClient::new()
+    let mut client = crate::client::ColisPriveClient::new(request.device_info.clone())
         .map_err(|e| {
             error!(
                 error = %e,

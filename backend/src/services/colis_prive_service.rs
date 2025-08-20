@@ -40,6 +40,17 @@ pub struct GetTourneeRequest {
 pub struct ColisPriveService;
 
 impl ColisPriveService {
+    /// Crear DeviceInfo de prueba para el servicio
+    fn create_test_device_info() -> crate::external_models::DeviceInfo {
+        crate::external_models::DeviceInfo {
+            model: "Service Test Device".to_string(),
+            imei: "000000000000000".to_string(),
+            serial_number: "service123".to_string(),
+            android_version: "14".to_string(),
+            install_id: "service-install-id".to_string(),
+        }
+    }
+    
     /// Autenticar con Colis Privé usando credenciales dinámicas
     pub async fn authenticate_colis_prive(
         credentials: ColisPriveAuthRequest
@@ -49,7 +60,7 @@ impl ColisPriveService {
             .map_err(|e| anyhow::anyhow!("Credenciales inválidas: {}", e))?;
 
         // Crear cliente temporal
-        let mut client = ColisPriveClient::new()?;
+        let mut client = ColisPriveClient::new(Self::create_test_device_info())?;
 
         // Intentar login
         match client.login(&credentials.username, &credentials.password, &credentials.societe).await {
@@ -89,7 +100,7 @@ impl ColisPriveService {
         matricule: &str
     ) -> Result<String> {
         // Crear cliente temporal
-        let mut client = ColisPriveClient::new()?;
+        let mut client = ColisPriveClient::new(Self::create_test_device_info())?;
 
         // Autenticar primero
         let login_response = client.login(&credentials.username, &credentials.password, &credentials.societe).await?;
@@ -135,7 +146,7 @@ impl ColisPriveService {
         let token = auth_result.token.unwrap();
         
         // Crear cliente y llamar API móvil
-        let client = ColisPriveClient::new()?;
+        let client = ColisPriveClient::new(Self::create_test_device_info())?;
         
         // Crear credenciales para el cliente
         let credentials = ColisPriveCredentials {
@@ -186,7 +197,17 @@ pub async fn authenticate_colis_prive_cached(
 
     // Si no está en cache, hacer request real
     tracing::info!("🔄 Autenticación no encontrada en cache, haciendo request real...");
-    let mut client = ColisPriveClient::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // Crear DeviceInfo de prueba para el servicio
+    let test_device_info = crate::external_models::DeviceInfo {
+        model: "Service Test Device".to_string(),
+        imei: "000000000000000".to_string(),
+        serial_number: "service123".to_string(),
+        android_version: "14".to_string(),
+        install_id: "service-install-id".to_string(),
+    };
+    
+    let mut client = ColisPriveClient::new(test_device_info).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     match client.login(&credentials.username, &credentials.password, &credentials.societe).await {
         Ok(auth_data) => {
@@ -228,7 +249,17 @@ pub async fn get_tournee_data_cached(
 
     // Si no está en cache, hacer request real
     tracing::info!("🔄 Tournée no encontrada en cache, haciendo request real...");
-    let mut client = ColisPriveClient::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // Crear DeviceInfo de prueba para el servicio
+    let test_device_info = crate::external_models::DeviceInfo {
+        model: "Service Test Device".to_string(),
+        imei: "000000000000000".to_string(),
+        serial_number: "service123".to_string(),
+        android_version: "14".to_string(),
+        install_id: "service-install-id".to_string(),
+    };
+    
+    let mut client = ColisPriveClient::new(test_device_info).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     // Primero autenticar
     let credentials = ColisPriveCredentials {
