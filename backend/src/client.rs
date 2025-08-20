@@ -15,18 +15,54 @@ pub struct ColisPriveClient {
     auth_base_url: String,
     tournee_base_url: String,
     sso_token: Option<String>,
+    activity_id: String, // UUID único por sesión
 }
 
 impl ColisPriveClient {
     pub fn new() -> Result<Self> {
-        // ureq no necesita builder, es más simple
+        // Configurar cliente con SSL bypass y headers específicos
+        let client = reqwest::Client::builder()
+            .http1_only() // Forzar HTTP/1.1
+            .http1_title_case_headers() // Headers en formato correcto
+            .cookie_store(true) // Mantener cookies de sesión
+            .danger_accept_invalid_certs(true) // SSL bypass
+            .danger_accept_invalid_hostnames(true) // Hostnames inválidos
+            .timeout(Duration::from_secs(30)) // Timeout de 30 segundos
+            .build()?;
 
         Ok(Self {
-            client: reqwest::Client::new(),
+            client,
             auth_base_url: "https://wsauthentificationexterne.colisprive.com".to_string(),
             tournee_base_url: "https://wstournee-v2.colisprive.com".to_string(),
             sso_token: None,
+            activity_id: Uuid::new_v4().to_string(), // UUID único por sesión
         })
+    }
+
+    /// Obtener headers comunes para todas las requests
+    fn get_common_headers(&self) -> reqwest::header::HeaderMap {
+        let mut headers = reqwest::header::HeaderMap::new();
+        
+        headers.insert("Accept-Charset", "UTF-8".parse().unwrap());
+        headers.insert("ActivityId", self.activity_id.parse().unwrap());
+        headers.insert("AppName", "CP DISTRI V2".parse().unwrap());
+        headers.insert("AppIdentifier", "com.danem.cpdistriv2".parse().unwrap());
+        headers.insert("Device", "Sony D5503".parse().unwrap());
+        headers.insert("VersionOS", "5.1.1".parse().unwrap());
+        headers.insert("VersionApplication", "3.3.0.9".parse().unwrap());
+        headers.insert("VersionCode", "1".parse().unwrap());
+        headers.insert("Societe", "PCP0010699".parse().unwrap());
+        headers.insert("Domaine", "Membership".parse().unwrap());
+        headers.insert("Content-Type", "application/json; charset=UTF-8".parse().unwrap());
+        headers.insert("Connection", "Keep-Alive".parse().unwrap());
+        headers.insert("Accept-Encoding", "gzip".parse().unwrap());
+        headers.insert("User-Agent", "okhttp/3.4.1".parse().unwrap());
+        headers.insert("X-Requested-With", "XMLHttpRequest".parse().unwrap());
+        headers.insert("X-Device-Info", "Android".parse().unwrap());
+        headers.insert("X-App-Build", "1".parse().unwrap());
+        headers.insert("X-Network-Type", "WIFI".parse().unwrap());
+        
+        headers
     }
 
     pub async fn login(&mut self, login: &str, password: &str, societe: &str) -> Result<LoginResponse> {
@@ -44,16 +80,18 @@ impl ColisPriveClient {
         println!("🔐 URL de login: {}", url);
         println!("📤 Enviando request: {:?}", login_req);
 
+        let mut headers = self.get_common_headers();
+        // Agregar headers específicos del login
+        headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+        headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
+        headers.insert("Cache-Control", "no-cache".parse().unwrap());
+        headers.insert("Pragma", "no-cache".parse().unwrap());
+        headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
+        headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
+
         let response = self.client
             .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json, text/plain, */*")
-            .header("Accept-Language", "fr-FR,fr;q=0.5")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache")
-            .header("Origin", "https://gestiontournee.colisprive.com")
-            .header("Referer", "https://gestiontournee.colisprive.com/")
-            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
+            .headers(headers)
             .json(&login_req)
             .send()
             .await?;
@@ -303,9 +341,6 @@ impl ColisPriveClient {
         matricule: &str,
         token: &str,
     ) -> Result<Vec<crate::external_models::MobilePackageAction>, Box<dyn std::error::Error>> {
-        let activity_id = uuid::Uuid::new_v4().to_string();
-        let basic_auth = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{}:null", matricule)));
-        
         let body = serde_json::json!({
             "DateDebut": date,
             "Matricule": matricule
@@ -313,26 +348,19 @@ impl ColisPriveClient {
 
         println!("🚀 Llamando endpoint móvil de Colis Privé...");
         println!("📱 URL: https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST");
-        println!("🔑 Token: {}", token);
+        println!("🔑 Token: {}...", &token[..50.min(token.len())]);
         println!("📅 Fecha: {}", date);
         println!("🆔 Matrícula: {}", matricule);
 
+        // Usar headers correctos de la app oficial
+        let mut headers = self.get_common_headers();
+        headers.insert("SsoHopps", token.parse().unwrap());
+        // Remover headers que no son necesarios para este endpoint
+        headers.remove("Content-Type"); // Se establece automáticamente con .json()
+        
         let response = self.client
             .post("https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST")
-            .header("Accept-Charset", "UTF-8")
-            .header("ActivityId", &activity_id)
-            .header("AppName", "CP DISTRI V2")
-            .header("UserName", matricule.split('_').last().unwrap_or(matricule).to_string())
-            .header("AppIdentifier", "com.delivery.optimizer")
-            .header("Device", "AndroidApp")
-            .header("VersionOS", "Android")
-            .header("VersionApplication", "1.0.0")
-            .header("VersionCode", "1")
-            .header("Societe", &credentials.societe)
-            .header("Domaine", "Membership")
-            .header("SsoHopps", token)
-            .header("Authorization", &basic_auth)
-            .header("Content-Type", "application/json; charset=UTF-8")
+            .headers(headers)
             .json(&body)
             .send()
             .await?;
@@ -363,16 +391,15 @@ impl ColisPriveClient {
             "token": old_token
         });
         
+        let url = format!("{}/api/auth/login-token", self.auth_base_url);
+        let headers = self.get_common_headers();
+        
+        println!("🔐 URL de refresh: {}", url);
+        println!("📤 Enviando refresh request: {:?}", refresh_request);
+        
         let response = self.client
-            .post("https://wsauthentificationexterne.colisprive.com/api/auth/login-token")
-            .header("Content-Type", "application/json; charset=UTF-8")
-            .header("Accept", "application/json, text/plain, */*")
-            .header("Accept-Language", "fr-FR,fr;q=0.5")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache")
-            .header("Origin", "https://gestiontournee.colisprive.com")
-            .header("Referer", "https://gestiontournee.colisprive.com/")
-            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
+            .post(&url)
+            .headers(headers)
             .json(&refresh_request)
             .send()
             .await?;
@@ -417,17 +444,17 @@ impl ColisPriveClient {
             "Matricule": format!("{}_{}", societe, username)
         });
         
+        let url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST";
+        let mut headers = self.get_common_headers();
+        // Agregar el token SsoHopps
+        headers.insert("SsoHopps", token.parse().unwrap());
+        
+        println!("📱 URL de tournée: {}", url);
+        println!("🔑 Token usado: {}...", &token[..50.min(token.len())]);
+        
         let response = self.client
-            .post("https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST")
-            .header("Content-Type", "application/json; charset=UTF-8")
-            .header("SsoHopps", token)
-            .header("Accept", "application/json, text/plain, */*")
-            .header("Accept-Language", "fr-FR,fr;q=0.5")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache")
-            .header("Origin", "https://gestiontournee.colisprive.com")
-            .header("Referer", "https://gestiontournee.colisprive.com/")
-            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
+            .post(url)
+            .headers(headers)
             .json(&body)
             .send()
             .await?;
@@ -448,5 +475,56 @@ impl ColisPriveClient {
         let tournee_data = response.json().await?;
         println!("✅ Tournée obtenida exitosamente con token específico");
         Ok(tournee_data)
+    }
+    
+    /// Obtener tournée móvil con auto-retry y refresh token automático
+    pub async fn get_mobile_tournee_with_retry(
+        &mut self,
+        username: &str,
+        _password: &str,
+        societe: &str,
+        date: &str,
+        token: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        println!("📱 TOURNÉE CON AUTO-RETRY - Username: {}", username);
+        
+        // Si no hay token, hacer login inicial
+        if token.is_none() {
+            println!("🔐 No hay token, haciendo login inicial...");
+            self.login(username, _password, societe).await?;
+        }
+        
+        // Obtener el token actual (clonar para evitar borrowing issues)
+        let current_token = if let Some(t) = token {
+            t.to_string()
+        } else {
+            self.sso_token.as_ref()
+                .expect("Token debe existir después del login")
+                .clone()
+        };
+        
+        // Intentar obtener tournée
+        match self.get_mobile_tournee_with_token(username, _password, societe, date, &current_token).await {
+            Ok(tournee_data) => {
+                println!("✅ Tournée obtenida exitosamente");
+                Ok(tournee_data)
+            }
+            Err(e) if e.to_string().contains("401") || e.to_string().contains("Token expirado") => {
+                println!("🔄 Token expirado, intentando refresh...");
+                
+                // Hacer refresh del token
+                let refresh_response = self.refresh_token(&current_token).await?;
+                let new_token = refresh_response.tokens.sso_hopps.clone();
+                
+                println!("🔄 Retry con nuevo token...");
+                
+                // Retry con el nuevo token
+                self.get_mobile_tournee_with_token(username, _password, societe, date, &new_token).await
+            }
+            Err(e) => {
+                println!("❌ Error no recuperable: {}", e);
+                Err(e)
+            }
+        }
     }
 }
