@@ -302,3 +302,4 @@ volumes:
 
 # Configuración de Redis cluster
 # Master-Slave con sincronización automática
+
