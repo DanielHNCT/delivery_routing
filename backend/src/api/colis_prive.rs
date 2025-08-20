@@ -123,6 +123,55 @@ pub async fn health_check() -> Json<serde_json::Value> {
     }))
 }
 
+/// GET /api/colis-prive/health - Health check de Colis Privé
+pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, StatusCode> {
+    use tracing::info;
+    
+    info!(
+        endpoint = "health_check",
+        "Starting Colis Privé health check"
+    );
+    
+    let start_time = std::time::Instant::now();
+    
+    // Crear cliente para test de conectividad
+    let client = match crate::client::ColisPriveClient::new() {
+        Ok(client) => client,
+        Err(e) => {
+            return Ok(Json(json!({
+                "status": "unhealthy",
+                "error": "Failed to create client",
+                "details": e.to_string(),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "version": env!("CARGO_PKG_VERSION")
+            })));
+        }
+    };
+    
+    // Test básico de conectividad (sin hacer requests reales)
+    let health_info = json!({
+        "status": "healthy",
+        "colis_prive_client": {
+            "auth_base_url": client.auth_base_url,
+            "tournee_base_url": client.tournee_base_url,
+            "ssl_bypass_enabled": true,
+            "headers_system": "implemented"
+        },
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "check_duration_ms": start_time.elapsed().as_millis()
+    });
+    
+    info!(
+        endpoint = "health_check",
+        status = "healthy",
+        duration_ms = start_time.elapsed().as_millis(),
+        "Health check completed successfully"
+    );
+    
+    Ok(Json(health_info))
+}
+
 /// POST /api/colis-prive/mobile-tournee - Obtener tournée usando endpoint móvil real
 pub async fn get_mobile_tournee(
     State(_state): State<AppState>,

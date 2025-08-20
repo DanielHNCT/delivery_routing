@@ -8,12 +8,12 @@ use reqwest::Client;
 use serde_json::json;
 use std::time::Duration;
 use uuid::Uuid;
-use tracing::{info, error};
+use tracing::{info, warn, error, debug, instrument};
 
 pub struct ColisPriveClient {
-    client: Client,
-    auth_base_url: String,
-    tournee_base_url: String,
+    pub client: Client,
+    pub auth_base_url: String,
+    pub tournee_base_url: String,
     sso_token: Option<String>,
     activity_id: String, // UUID único por sesión
 }
@@ -106,7 +106,17 @@ impl ColisPriveClient {
         self.get_colis_headers("default", None, None)
     }
 
+    #[instrument(skip(self, login, password, societe), fields(username = %login, societe = %societe))]
     pub async fn login(&mut self, login: &str, password: &str, societe: &str) -> Result<LoginResponse> {
+        let start_time = std::time::Instant::now();
+        
+        info!(
+            endpoint = "login",
+            username = %login,
+            societe = %societe,
+            "Starting Colis Privé authentication"
+        );
+        
         let url = format!("{}/api/auth/login/Membership", self.auth_base_url);
         
         let login_req = LoginRequest {
@@ -118,10 +128,22 @@ impl ColisPriveClient {
             },
         };
 
-        println!("🔐 URL de login: {}", url);
-        println!("📤 Enviando request: {:?}", login_req);
+        debug!(
+            endpoint = "login",
+            url = %url,
+            request_body = ?login_req,
+            "Sending authentication request"
+        );
 
         let headers = self.get_colis_headers("login", Some(login), None);
+        
+        debug!(
+            endpoint = "login",
+            headers_count = headers.len(),
+            has_activity_id = headers.contains_key("ActivityId"),
+            has_app_name = headers.contains_key("AppName"),
+            "Using authentication headers"
+        );
 
         let response = self.client
             .post(&url)
@@ -131,10 +153,25 @@ impl ColisPriveClient {
             .await?;
 
         let status = response.status();
-        println!("📥 Status de respuesta: {}", status);
+        let duration = start_time.elapsed();
+        
+        info!(
+            endpoint = "login",
+            status = %status,
+            duration_ms = duration.as_millis(),
+            success = status.is_success(),
+            "Authentication response received"
+        );
 
         if !status.is_success() {
             let error_body = response.text().await?;
+            error!(
+                endpoint = "login",
+                status = %status,
+                error_body = %error_body,
+                duration_ms = duration.as_millis(),
+                "Authentication failed"
+            );
             anyhow::bail!(
                 "Login falló con status: {} - Body: {}",
                 status,
@@ -143,6 +180,19 @@ impl ColisPriveClient {
         }
 
         let login_response: LoginResponse = response.json().await?;
+        
+        // Logging seguro del token
+        let token_preview = &login_response.tokens.SsoHopps[..20.min(login_response.tokens.SsoHopps.len())];
+        
+        info!(
+            endpoint = "login",
+            success = true,
+            token_preview = %token_preview,
+            token_length = login_response.tokens.SsoHopps.len(),
+            duration_ms = duration.as_millis(),
+            "Authentication successful"
+        );
+        
         // Ahora usamos el token real de la respuesta
         self.sso_token = Some(login_response.tokens.SsoHopps.clone());
         
@@ -152,7 +202,7 @@ impl ColisPriveClient {
     pub async fn get_pilot_access(&self, token: &str, matricule: &str, societe: &str) -> Result<()> {
         let url = format!("https://ws-gestiontournee-inter.colisprive.com/WS_PilotManagement/api/Pilot/access/{}/{}/FRONT_MOP", matricule, societe);
         
-        println!("📤 Request 1: Pilot access - {}", url);
+        debug!("📤 Request 1: Pilot access - {}", url);
 
         let response = self.client
             .get(&url)
@@ -164,7 +214,7 @@ impl ColisPriveClient {
             .await?;
 
         let status = response.status();
-        println!("📥 Pilot access status: {}", status);
+        debug!("📥 Pilot access status: {}", status);
 
         if !status.is_success() {
             let error_body = response.text().await?;
@@ -191,8 +241,8 @@ impl ColisPriveClient {
             "Concentrateur": null
         });
 
-        println!("🔍 Dashboard URL (curl): {}", url);
-        println!("🔍 Dashboard Token (curl): {}...", &token[..50.min(token.len())]);
+        debug!("🔍 Dashboard URL (curl): {}", url);
+        debug!("🔍 Dashboard Token (curl): {}...", &token[..50.min(token.len())]);
 
         // Construir comando curl
         let curl_cmd = format!(
@@ -218,7 +268,7 @@ impl ColisPriveClient {
             url, token, serde_json::to_string(&dashboard_req)?
         );
 
-        println!("🔍 Comando curl: {}", curl_cmd);
+        debug!("🔍 Comando curl: {}", curl_cmd);
 
         // Ejecutar curl
         let output = std::process::Command::new("sh")
@@ -228,7 +278,7 @@ impl ColisPriveClient {
 
         if output.status.success() {
             let response_text = String::from_utf8_lossy(&output.stdout);
-            println!("✅ Curl Success! Response: {}", response_text);
+            debug!("✅ Curl Success! Response: {}", response_text);
             
             // Intentar parsear como JSON
             match serde_json::from_str::<serde_json::Value>(&response_text) {
@@ -240,7 +290,7 @@ impl ColisPriveClient {
             }
         } else {
             let error_text = String::from_utf8_lossy(&output.stderr);
-            println!("❌ Curl Error: {}", error_text);
+            debug!("❌ Curl Error: {}", error_text);
             Err(anyhow::anyhow!("Curl request failed: {}", error_text))
         }
     }
@@ -258,8 +308,8 @@ impl ColisPriveClient {
             }
         });
 
-        println!("🔍 Tournée URL (curl): {}", url);
-        println!("🔍 Tournée Token (curl): {}...", &token[..50.min(token.len())]);
+        debug!("🔍 Tournée URL (curl): {}", url);
+        debug!("🔍 Tournée Token (curl): {}...", &token[..50.min(token.len())]);
 
         // Construir comando curl
         let curl_cmd = format!(
@@ -285,7 +335,7 @@ impl ColisPriveClient {
             url, token, serde_json::to_string(&tournee_req)?
         );
 
-        println!("🔍 Comando curl tournée: {}", curl_cmd);
+        debug!("🔍 Comando curl tournée: {}", curl_cmd);
 
         // Ejecutar curl
         let output = std::process::Command::new("sh")
@@ -295,11 +345,11 @@ impl ColisPriveClient {
 
         if output.status.success() {
             let response_text = String::from_utf8_lossy(&output.stdout);
-            println!("✅ Curl Tournée Success! Response length: {}", response_text.len());
+            debug!("✅ Curl Tournée Success! Response length: {}", response_text.len());
             Ok(response_text.to_string())
         } else {
             let error_text = String::from_utf8_lossy(&output.stderr);
-            println!("❌ Curl Tournée Error: {}", error_text);
+            debug!("❌ Curl Tournée Error: {}", error_text);
             Err(anyhow::anyhow!("Curl tournée request failed: {}", error_text))
         }
     }
@@ -308,18 +358,18 @@ impl ColisPriveClient {
         let sso_token = self.sso_token.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No hay token de autenticación. Haz login primero."))?;
 
-        println!("🔍 Activando sesión con requests intermedias...");
+        debug!("🔍 Activando sesión con requests intermedias...");
 
         // 1. Request intermedia: Pilot access
         self.get_pilot_access(sso_token, matricule, societe).await?;
-        println!("✅ Pilot access exitoso!");
+        debug!("✅ Pilot access exitoso!");
 
         // 2. Request intermedia: Dashboard info
         let _dashboard_response = self.get_dashboard_info(sso_token, societe, matricule, date).await?;
-        println!("✅ Dashboard info exitoso!");
+        debug!("✅ Dashboard info exitoso!");
 
         // 3. Ahora sí, la request final de tournée
-        println!("🚀 Activando request final de tournée...");
+        debug!("🚀 Activando request final de tournée...");
 
         let tournee_url = format!("{}/WS-TourneeColis/api/getLettreVoitureEco_POST", self.tournee_base_url);
 
@@ -332,9 +382,9 @@ impl ColisPriveClient {
             },
         };
 
-        println!("🔍 URL de tournée: {}", tournee_url);
-        println!("📤 Enviando request: {:?}", tournee_request);
-        println!("🔑 Token de autorización: {}", sso_token);
+        debug!("🔍 URL de tournée: {}", tournee_url);
+        debug!("📤 Enviando request: {:?}", tournee_request);
+        debug!("🔑 Token de autorización: {}", sso_token);
 
         let response = self.client
             .post(&tournee_url)
@@ -347,7 +397,7 @@ impl ColisPriveClient {
             .await?;
 
         let status = response.status();
-        println!("📥 Status de respuesta: {}", status);
+        debug!("📥 Status de respuesta: {}", status);
 
         if !status.is_success() {
             let error_body = response.text().await?;
@@ -380,11 +430,11 @@ impl ColisPriveClient {
             "Matricule": matricule
         });
 
-        println!("🚀 Llamando endpoint móvil de Colis Privé...");
-        println!("📱 URL: https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST");
-        println!("🔑 Token: {}...", &token[..50.min(token.len())]);
-        println!("📅 Fecha: {}", date);
-        println!("🆔 Matrícula: {}", matricule);
+        debug!("🚀 Llamando endpoint móvil de Colis Privé...");
+        debug!("📱 URL: https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST");
+        debug!("🔑 Token: {}...", &token[..50.min(token.len())]);
+        debug!("�� Fecha: {}", date);
+        debug!("🆔 Matrícula: {}", matricule);
 
         // Usar headers exactos de la app oficial
         let username = credentials.username.split('_').last().unwrap_or(&credentials.username);
@@ -398,7 +448,7 @@ impl ColisPriveClient {
             .await?;
 
         let status = response.status();
-        println!("📥 Status de respuesta móvil: {}", status);
+        debug!("📥 Status de respuesta móvil: {}", status);
 
         if !status.is_success() {
             let error_body = response.text().await?;
@@ -409,14 +459,22 @@ impl ColisPriveClient {
         }
 
         let mobile_data: Vec<crate::external_models::MobilePackageAction> = response.json().await?;
-        println!("✅ Datos móviles obtenidos exitosamente: {} paquetes", mobile_data.len());
+        debug!("✅ Datos móviles obtenidos exitosamente: {} paquetes", mobile_data.len());
         
         Ok(mobile_data)
     }
 
     /// Refresh token usando el endpoint /api/auth/login-token
+    #[instrument(skip(self, old_token), fields(token_preview = %&old_token[..20.min(old_token.len())]))]
     pub async fn refresh_token(&mut self, old_token: &str) -> Result<ColisAuthResponse> {
-        println!("🔄 REFRESH TOKEN - Token anterior: {}...", &old_token[..50.min(old_token.len())]);
+        let start_time = std::time::Instant::now();
+        
+        info!(
+            endpoint = "refresh_token",
+            token_preview = %&old_token[..20.min(old_token.len())],
+            token_length = old_token.len(),
+            "Starting token refresh"
+        );
         
         let refresh_request = json!({
             "dureeTokenInHour": 0,
@@ -426,8 +484,13 @@ impl ColisPriveClient {
         let url = format!("{}/api/auth/login-token", self.auth_base_url);
         let headers = self.get_colis_headers("refresh", None, None);
         
-        println!("🔐 URL de refresh: {}", url);
-        println!("📤 Enviando refresh request: {:?}", refresh_request);
+        debug!(
+            endpoint = "refresh_token",
+            url = %url,
+            request_body = ?refresh_request,
+            headers_count = headers.len(),
+            "Sending refresh token request"
+        );
         
         let response = self.client
             .post(&url)
@@ -437,30 +500,61 @@ impl ColisPriveClient {
             .await?;
         
         let status = response.status();
-        println!("📥 Refresh Status: {}", status);
+        let duration = start_time.elapsed();
+        
+        info!(
+            endpoint = "refresh_token",
+            status = %status,
+            duration_ms = duration.as_millis(),
+            success = status.is_success(),
+            "Refresh token response received"
+        );
         
         if !status.is_success() {
-            println!("❌ Refresh token falló con status: {}", status);
+            let error_body = response.text().await?;
+            error!(
+                endpoint = "refresh_token",
+                status = %status,
+                error_body = %error_body,
+                duration_ms = duration.as_millis(),
+                "Token refresh failed"
+            );
             return Err(anyhow::anyhow!("Refresh token falló con status: {}", status));
         }
         
         let refresh_response: ColisAuthResponse = response.json().await?;
         
         if !refresh_response.is_authentif {
-            println!("❌ Refresh token falló - isAuthentif: false");
+            warn!(
+                endpoint = "refresh_token",
+                is_authentif = false,
+                duration_ms = duration.as_millis(),
+                "Refresh token returned invalid authentication"
+            );
             return Err(anyhow::anyhow!("Refresh token falló - autenticación inválida"));
         }
         
         // Actualizar el token en el cliente
         self.sso_token = Some(refresh_response.tokens.sso_hopps.clone());
         
-        println!("✅ Token refresh exitoso");
-        println!("🔑 Nuevo token: {}...", &refresh_response.tokens.sso_hopps[..50.min(refresh_response.tokens.sso_hopps.len())]);
+        // Logging seguro del nuevo token
+        let new_token_preview = &refresh_response.tokens.sso_hopps[..20.min(refresh_response.tokens.sso_hopps.len())];
+        
+        info!(
+            endpoint = "refresh_token",
+            success = true,
+            new_token_preview = %new_token_preview,
+            new_token_length = refresh_response.tokens.sso_hopps.len(),
+            is_authentif = refresh_response.is_authentif,
+            duration_ms = duration.as_millis(),
+            "Token refresh successful"
+        );
         
         Ok(refresh_response)
     }
     
     /// Obtener tournée móvil usando un token específico
+    #[instrument(skip(self, username, password, societe, date, token), fields(username = %username, date = %date, token_preview = %&token[..20.min(token.len())]))]
     pub async fn get_mobile_tournee_with_token(
         &mut self,
         username: &str,
@@ -469,7 +563,16 @@ impl ColisPriveClient {
         date: &str,
         token: &str,
     ) -> Result<serde_json::Value> {
-        println!("📱 TOURNÉE CON TOKEN ESPECÍFICO - Username: {}", username);
+        let start_time = std::time::Instant::now();
+        
+        info!(
+            endpoint = "mobile_tournee_with_token",
+            username = %username,
+            date = %date,
+            societe = %societe,
+            token_preview = %&token[..20.min(token.len())],
+            "Starting mobile tournée request with specific token"
+        );
         
         let body = json!({
             "DateDebut": date,
@@ -479,8 +582,14 @@ impl ColisPriveClient {
         let url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST";
         let headers = self.get_colis_headers("tournee", Some(username), Some(token));
         
-        println!("📱 URL de tournée: {}", url);
-        println!("🔑 Token usado: {}...", &token[..50.min(token.len())]);
+        debug!(
+            endpoint = "mobile_tournee_with_token",
+            url = %url,
+            request_body = ?body,
+            headers_count = headers.len(),
+            has_sso_hopps = headers.contains_key("SsoHopps"),
+            "Using tournée headers and request body"
+        );
         
         let response = self.client
             .post(url)
@@ -490,24 +599,52 @@ impl ColisPriveClient {
             .await?;
         
         let status = response.status();
-        println!("📥 Status de respuesta tournée con token: {}", status);
+        let duration = start_time.elapsed();
+        
+        info!(
+            endpoint = "mobile_tournee_with_token",
+            status = %status,
+            duration_ms = duration.as_millis(),
+            success = status.is_success(),
+            "Tournée response received"
+        );
         
         if status == reqwest::StatusCode::UNAUTHORIZED {
-            println!("❌ 401 Unauthorized - Token expirado o inválido");
+            warn!(
+                endpoint = "mobile_tournee_with_token",
+                status = %status,
+                duration_ms = duration.as_millis(),
+                "401 Unauthorized - Token expired or invalid"
+            );
             return Err(anyhow::anyhow!("Token expirado o inválido"));
         }
         
         if !status.is_success() {
-            println!("❌ Error en endpoint tournée con token: {}", status);
+            let error_body = response.text().await?;
+            error!(
+                endpoint = "mobile_tournee_with_token",
+                status = %status,
+                error_body = %error_body,
+                duration_ms = duration.as_millis(),
+                "Tournée request failed"
+            );
             return Err(anyhow::anyhow!("Endpoint tournée falló con status: {}", status));
         }
         
         let tournee_data = response.json().await?;
-        println!("✅ Tournée obtenida exitosamente con token específico");
+        
+        info!(
+            endpoint = "mobile_tournee_with_token",
+            success = true,
+            duration_ms = duration.as_millis(),
+            "Tournée data successfully retrieved"
+        );
+        
         Ok(tournee_data)
     }
     
     /// Obtener tournée móvil con auto-retry y refresh token automático
+    #[instrument(skip(self, username, _password, societe, date, token), fields(username = %username, date = %date, has_token = token.is_some()))]
     pub async fn get_mobile_tournee_with_retry(
         &mut self,
         username: &str,
@@ -516,43 +653,138 @@ impl ColisPriveClient {
         date: &str,
         token: Option<&str>,
     ) -> Result<serde_json::Value> {
-        println!("📱 TOURNÉE CON AUTO-RETRY - Username: {}", username);
+        let start_time = std::time::Instant::now();
+        
+        info!(
+            endpoint = "mobile_tournee_with_retry",
+            username = %username,
+            date = %date,
+            societe = %societe,
+            has_token = token.is_some(),
+            "Starting mobile tournée with auto-retry"
+        );
         
         // Si no hay token, hacer login inicial
-        if token.is_none() {
-            println!("🔐 No hay token, haciendo login inicial...");
-            self.login(username, _password, societe).await?;
-        }
-        
-        // Obtener el token actual (clonar para evitar borrowing issues)
-        let current_token = if let Some(t) = token {
-            t.to_string()
+        let token = if let Some(token) = token {
+            info!(
+                endpoint = "mobile_tournee_with_retry",
+                token_preview = %&token[..20.min(token.len())],
+                "Using existing token for tournée"
+            );
+            token.to_string()
         } else {
-            self.sso_token.as_ref()
-                .expect("Token debe existir después del login")
-                .clone()
+            info!(
+                endpoint = "mobile_tournee_with_retry",
+                username = %username,
+                "No token provided, performing initial login"
+            );
+            
+            // Usar el método login existente
+            let auth_response = self.login(username, _password, societe).await?;
+            
+            // Extraer token del response (LoginResponse usa tokens.SsoHopps)
+            let new_token = auth_response.tokens.SsoHopps.clone();
+            info!(
+                endpoint = "mobile_tournee_with_retry",
+                token_preview = %&new_token[..20.min(new_token.len())],
+                "Initial login successful, obtained token"
+            );
+            new_token
         };
         
-        // Intentar obtener tournée
-        match self.get_mobile_tournee_with_token(username, _password, societe, date, &current_token).await {
+        // Intento 1: con token actual
+        debug!(
+            endpoint = "mobile_tournee_with_retry",
+            attempt = 1,
+            token_preview = %&token[..20.min(token.len())],
+            "Attempting tournée with current token"
+        );
+        
+        match self.get_mobile_tournee_with_token(username, _password, societe, date, &token).await {
             Ok(tournee_data) => {
-                println!("✅ Tournée obtenida exitosamente");
+                let duration = start_time.elapsed();
+                info!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 1,
+                    success = true,
+                    duration_ms = duration.as_millis(),
+                    "Tournée successful with current token"
+                );
                 Ok(tournee_data)
             }
             Err(e) if e.to_string().contains("401") || e.to_string().contains("Token expirado") => {
-                println!("🔄 Token expirado, intentando refresh...");
+                let attempt1_duration = start_time.elapsed();
+                warn!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 1,
+                    error = %e,
+                    duration_ms = attempt1_duration.as_millis(),
+                    "Token expired, attempting refresh"
+                );
+                
+                // Intento 2: Refresh token y retry
+                debug!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 2,
+                    "Starting token refresh for retry"
+                );
+                
+                let refresh_start = std::time::Instant::now();
                 
                 // Hacer refresh del token
-                let refresh_response = self.refresh_token(&current_token).await?;
+                let refresh_response = self.refresh_token(&token).await?;
                 let new_token = refresh_response.tokens.sso_hopps.clone();
                 
-                println!("🔄 Retry con nuevo token...");
+                let refresh_duration = refresh_start.elapsed();
+                info!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 2,
+                    new_token_preview = %&new_token[..20.min(new_token.len())],
+                    refresh_duration_ms = refresh_duration.as_millis(),
+                    "Token refresh successful, retrying tournée"
+                );
                 
                 // Retry con el nuevo token
-                self.get_mobile_tournee_with_token(username, _password, societe, date, &new_token).await
+                let retry_start = std::time::Instant::now();
+                let result = self.get_mobile_tournee_with_token(username, _password, societe, date, &new_token).await;
+                
+                let total_duration = start_time.elapsed();
+                let retry_duration = retry_start.elapsed();
+                
+                match &result {
+                    Ok(_) => {
+                        info!(
+                            endpoint = "mobile_tournee_with_retry",
+                            attempt = 2,
+                            success = true,
+                            total_duration_ms = total_duration.as_millis(),
+                            retry_duration_ms = retry_duration.as_millis(),
+                            "Tournée successful after token refresh and retry"
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            endpoint = "mobile_tournee_with_retry",
+                            attempt = 2,
+                            error = %e,
+                            total_duration_ms = total_duration.as_millis(),
+                            retry_duration_ms = retry_duration.as_millis(),
+                            "Tournée failed after token refresh and retry"
+                        );
+                    }
+                }
+                
+                result
             }
             Err(e) => {
-                println!("❌ Error no recuperable: {}", e);
+                let duration = start_time.elapsed();
+                error!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 1,
+                    error = %e,
+                    duration_ms = duration.as_millis(),
+                    "Non-recoverable error in tournée request"
+                );
                 Err(e)
             }
         }
