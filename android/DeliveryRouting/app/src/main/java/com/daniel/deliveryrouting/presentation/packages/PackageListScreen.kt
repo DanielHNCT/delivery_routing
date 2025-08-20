@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.daniel.deliveryrouting.data.api.models.Package
 import com.daniel.deliveryrouting.presentation.main.MainViewModel
-import com.daniel.deliveryrouting.presentation.main.ViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +38,7 @@ fun PackageListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::onRefresh) {
+                    IconButton(onClick = { viewModel.loadCurrentDayTournee() }) {
                         if (uiState.isLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
@@ -51,20 +50,6 @@ fun PackageListScreen(
                     }
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = viewModel::onToggleViewMode
-            ) {
-                Icon(
-                    imageVector = if (uiState.viewMode == ViewMode.LIST) {
-                        Icons.Default.Place
-                    } else {
-                        Icons.Default.List
-                    },
-                    contentDescription = "Cambiar vista"
-                )
-            }
         }
     ) { paddingValues ->
         Column(
@@ -98,31 +83,28 @@ fun PackageListScreen(
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = viewModel::clearError) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Cerrar",
-                                tint = MaterialTheme.colorScheme.onErrorContainer
-                            )
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar")
                         }
                     }
                 }
             }
             
-            // Lista de paquetes o loading
-            if (uiState.isLoading && uiState.packages.isEmpty()) {
-                Box(
+            // Mostrar paquetes
+            if (uiState.packages.isNotEmpty()) {
+                LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Cargando paquetes...")
+                    items(uiState.packages) { packageItem ->
+                        PackageCard(
+                            packageItem = packageItem,
+                            onClick = { onPackageClick(packageItem) }
+                        )
                     }
                 }
-            } else if (uiState.packages.isEmpty()) {
+            } else if (!uiState.isLoading) {
+                // Estado vacío
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -138,38 +120,45 @@ fun PackageListScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No hay paquetes para hoy",
+                            text = "No hay paquetes para mostrar",
                             style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Toca el botón de actualizar para cargar la tournée",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            } else {
-                LazyColumn(
+            }
+            
+            // Loading state
+            if (uiState.isLoading) {
+                Box(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentAlignment = Alignment.Center
                 ) {
-                    items(uiState.packages) { packageItem ->
-                        PackageItem(
-                            packageItem = packageItem,
-                            onClick = { onPackageClick(packageItem) }
-                        )
-                    }
+                    CircularProgressIndicator()
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PackageItem(
+private fun PackageCard(
     packageItem: Package,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onClick
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -184,63 +173,70 @@ fun PackageItem(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                Badge(
-                    containerColor = when (packageItem.status.code) {
-                        "PENDING" -> Color(0xFFFF9800)
-                        "IN_PROGRESS" -> Color(0xFF2196F3)
-                        "COMPLETED" -> Color(0xFF4CAF50)
-                        else -> Color(0xFFF44336)
-                    }
-                ) {
-                    Text(
-                        text = packageItem.status.label,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+                StatusChip(status = packageItem.status)
             }
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            if (packageItem.location.hasCoordinates) {
-                Row {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = packageItem.location.formattedAddress ?: "Dirección no disponible",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            if (packageItem.location.city != null) {
+                Text(
+                    text = "${packageItem.location.city} ${packageItem.location.postalCode ?: ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Tournée: ${packageItem.tourneeCode}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                if (packageItem.sender.name.isNotEmpty()) {
                     Text(
-                        text = "GPS disponible",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            } else {
-                Row {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Sin coordenadas GPS",
+                        text = packageItem.sender.name,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = packageItem.action.label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
+    }
+}
+
+@Composable
+private fun StatusChip(status: com.daniel.deliveryrouting.data.api.models.PackageStatus) {
+    val backgroundColor = when {
+        status.isCompleted -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    
+    val textColor = when {
+        status.isCompleted -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    
+    Surface(
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Text(
+            text = status.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }

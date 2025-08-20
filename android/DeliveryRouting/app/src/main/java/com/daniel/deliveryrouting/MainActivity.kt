@@ -17,8 +17,8 @@ import com.daniel.deliveryrouting.presentation.login.LoginScreen
 import com.daniel.deliveryrouting.presentation.login.LoginViewModel
 import com.daniel.deliveryrouting.presentation.packages.PackageListScreen
 import com.daniel.deliveryrouting.presentation.main.MainViewModel
-import com.daniel.deliveryrouting.presentation.colis.ColisAuthViewModel
 import com.daniel.deliveryrouting.data.repository.ColisRepository
+import com.daniel.deliveryrouting.data.token.ColisTokenManager
 import com.daniel.deliveryrouting.ui.theme.DeliveryRoutingTheme
 
 // TODO: MAPBOX INTEGRATION
@@ -51,15 +51,23 @@ fun DeliveryRoutingApp() {
     
     if (isLoggedIn) {
         // ✅ CAMBIO: Ir directamente a lista de paquetes (sin selección)
-        val app = DeliveryRoutingApplication.getInstance()
+        val context = LocalContext.current
         
-        val mainViewModel = remember {
-            MainViewModel(app.deliveryRepository, app.locationRepository)
+        val colisRepository = remember(context) {
+            ColisRepository(context)
         }
         
-        // ✅ CARGAR AUTOMÁTICAMENTE la tournée del día actual
+        val tokenManager = remember(context) {
+            ColisTokenManager(context)
+        }
+        
+        val mainViewModel = remember {
+            MainViewModel(colisRepository, tokenManager)
+        }
+        
+        // ✅ VERIFICAR ESTADO DE AUTENTICACIÓN Y CARGAR TOURNÉE
         LaunchedEffect(Unit) {
-            mainViewModel.loadCurrentDayTournee()
+            mainViewModel.checkAuthenticationStatus()
         }
         
         // ✅ MOSTRAR SOLO la lista de paquetes (sin campos de selección)
@@ -71,7 +79,6 @@ fun DeliveryRoutingApp() {
         )
     } else {
         // 🚀 NUEVA: Pantalla de login personalizada
-        val app = DeliveryRoutingApplication.getInstance()
         val context = LocalContext.current
         
         val colisRepository = remember(context) {

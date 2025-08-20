@@ -2,19 +2,8 @@ package com.daniel.deliveryrouting
 
 import android.app.Application
 import android.util.Log
-import com.daniel.deliveryrouting.data.api.ApiService
-import com.daniel.deliveryrouting.data.api.ApiConfig
-import com.daniel.deliveryrouting.data.api.AuthInterceptor
-import com.daniel.deliveryrouting.data.api.ResponseLoggingInterceptor
 import com.daniel.deliveryrouting.data.api.NetworkModule
 import com.daniel.deliveryrouting.data.preferences.PreferencesManager
-import com.daniel.deliveryrouting.data.repository.DeliveryRepository
-import com.daniel.deliveryrouting.data.repository.LocationRepository
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
 
 class DeliveryRoutingApplication : Application() {
     
@@ -30,8 +19,8 @@ class DeliveryRoutingApplication : Application() {
         
         Log.d("DeliveryRoutingApp", "Inicializando aplicación...")
         
-        // Inicializar servicios usando NetworkModule (timeouts 60s + logging detallado)
-        apiService = NetworkModule.apiService
+        // Inicializar servicios usando NetworkModule
+        okHttpClient = NetworkModule.okHttpClient
         
         Log.d("DeliveryRoutingApp", "Aplicación inicializada correctamente")
     }
@@ -41,13 +30,5 @@ class DeliveryRoutingApplication : Application() {
         PreferencesManager(this)
     }
     
-    lateinit var apiService: ApiService
-    
-    val deliveryRepository: DeliveryRepository by lazy {
-        DeliveryRepository(apiService, preferencesManager)
-    }
-    
-    val locationRepository: LocationRepository by lazy {
-        LocationRepository()
-    }
+    lateinit var okHttpClient: okhttp3.OkHttpClient
 }

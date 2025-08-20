@@ -29,3 +29,4 @@ data class BackendErrorResponse(
     val message: String,
     val timestamp: String
 )
+

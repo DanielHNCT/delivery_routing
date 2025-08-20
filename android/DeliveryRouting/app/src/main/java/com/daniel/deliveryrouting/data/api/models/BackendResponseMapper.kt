@@ -94,3 +94,4 @@ object BackendResponseMapper {
         Log.d(TAG, "  timestamp: ${backendResponse.timestamp}")
     }
 }
+

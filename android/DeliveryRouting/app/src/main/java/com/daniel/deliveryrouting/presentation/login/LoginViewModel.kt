@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.daniel.deliveryrouting.data.repository.ColisRepository
-import com.daniel.deliveryrouting.data.api.models.ColisLoginResponse
+import com.daniel.deliveryrouting.data.api.models.AuthResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,12 +34,12 @@ class LoginViewModel(
                 
                 result.fold(
                     onSuccess = { response ->
-                        Log.d("LoginViewModel", "✅ LOGIN EXITOSO")
-                        Log.d("LoginViewModel", "Matricule: ${response.matricule}")
-                        Log.d("LoginViewModel", "Token: ${response.tokens?.ssoHopps?.take(50)}...")
+                        Log.d("LoginViewModel", "✅ LOGIN EXITOSO CON FLUJO COMPLETO")
+                        Log.d("LoginViewModel", "Flow Result: ${response.flowResult?.success}")
+                        Log.d("LoginViewModel", "Session ID: ${response.flowResult?.sessionId?.take(50)}...")
                         _loginState.value = LoginState.Success(
-                            matricule = response.matricule ?: username,
-                            token = response.tokens?.ssoHopps ?: ""
+                            matricule = response.flowResult?.sessionId?.split("_")?.lastOrNull() ?: username,
+                            token = response.flowResult?.sessionId ?: ""
                         )
                     },
                     onFailure = { exception ->
