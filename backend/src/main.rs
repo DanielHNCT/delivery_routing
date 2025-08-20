@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
         .route("/api/colis-prive/mobile-tournee-updated", post(api::colis_prive::get_mobile_tournee_structured))
         .route("/api/colis-prive/refresh-token", post(api::colis_prive::refresh_colis_prive_token))
         .route("/api/colis-prive/mobile-tournee-with-retry", post(api::colis_prive::mobile_tournee_with_retry))
-        .route("/api/colis-prive/health", get(health_check))
+        .route("/api/colis-prive/health", get(api::colis_prive::health_check_colis_prive))
         .route("/api/migration/status", get(get_migration_status))
         .route("/api/migration/strategy", post(change_migration_strategy))
         .route("/api/migration/metrics", get(get_migration_metrics))

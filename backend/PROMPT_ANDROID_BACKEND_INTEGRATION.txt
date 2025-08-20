@@ -1,0 +1,170 @@
+# 🚀 PROMPT PARA ANDROID - INTEGRACIÓN CON BACKEND LOCAL
+
+## 🎯 OBJETIVO PRINCIPAL:
+
+**Android DEBE usar tu backend local** para que puedas **optimizar las rutas** de entrega. La app no es solo para autenticación, sino para **optimización inteligente de rutas**.
+
+## ❌ PROBLEMA ACTUAL:
+
+Android está yendo **directamente a Colis Privé**:
+```
+Android → https://wsauthentificationexterne.colisprive.com (EXTERNO)
+```
+
+## ✅ SOLUCIÓN REQUERIDA:
+
+Android debe ir **a través de tu backend**:
+```
+Android → http://localhost:3000/api/colis-prive/auth → Colis Privé → Respuesta Optimizada
+```
+
+## 🔧 IMPLEMENTACIÓN REQUERIDA:
+
+### 1. CAMBIAR URLs EN ANDROID:
+
+```kotlin
+// ❌ CONFIGURACIÓN ACTUAL (INCORRECTA):
+class ColisApiConfig {
+    companion object {
+        const val BASE_URL = "https://wsauthentificationexterne.colisprive.com"
+        const val AUTH_ENDPOINT = "/api/auth/login/Membership"
+    }
+}
+
+// ✅ CONFIGURACIÓN CORREGIDA:
+class ColisApiConfig {
+    companion object {
+        // Para desarrollo/emulador
+        const val BASE_URL = "http://10.0.2.2:3000"  // localhost del emulador
+        // Para dispositivo físico en misma red
+        // const val BASE_URL = "http://192.168.1.XXX:3000"  // IP de tu máquina
+        
+        const val AUTH_ENDPOINT = "/api/colis-prive/auth"
+        const val TOURNEE_ENDPOINT = "/api/colis-prive/mobile-tournee-updated"
+    }
+}
+```
+
+### 2. ACTUALIZAR ENDPOINTS:
+
+```kotlin
+// ❌ ENDPOINTS ACTUALES (DIRECTOS A COLIS PRIVÉ):
+const val AUTH_URL = "https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership"
+const val TOURNEE_URL = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST"
+
+// ✅ ENDPOINTS CORREGIDOS (A TRAVÉS DE TU BACKEND):
+const val AUTH_URL = "http://10.0.2.2:3000/api/colis-prive/auth"
+const val TOURNEE_URL = "http://10.0.2.2:3000/api/colis-prive/mobile-tournee-updated"
+```
+
+### 3. CONFIGURACIÓN DE ENTORNO:
+
+```kotlin
+// Agregar configuración de entorno
+object EnvironmentConfig {
+    enum class Environment {
+        DEVELOPMENT,  // Usa tu backend local
+        PRODUCTION   // Usa Colis Privé directo (si es necesario)
+    }
+    
+    val currentEnvironment = Environment.DEVELOPMENT
+    
+    fun getBaseUrl(): String {
+        return when (currentEnvironment) {
+            Environment.DEVELOPMENT -> "http://10.0.2.2:3000"
+            Environment.PRODUCTION -> "https://wsauthentificationexterne.colisprive.com"
+        }
+    }
+}
+```
+
+### 4. ACTUALIZAR CLIENTE HTTP:
+
+```kotlin
+// En ColisHttpClient o similar
+class ColisHttpClient {
+    private val baseUrl = EnvironmentConfig.getBaseUrl()
+    
+    suspend fun authenticate(request: ColisLoginRequest): ColisLoginResponse {
+        val url = if (EnvironmentConfig.currentEnvironment == Environment.DEVELOPMENT) {
+            "$baseUrl/api/colis-prive/auth"  // Tu backend
+        } else {
+            "$baseUrl/api/auth/login/Membership"  // Colis Privé directo
+        }
+        
+        return client.post(url) {
+            // ... resto del código
+        }
+    }
+}
+```
+
+## 📱 ARCHIVOS A MODIFICAR:
+
+1. **ColisApiConfig.kt** - URLs base y endpoints
+2. **ColisHttpClient.kt** - Cliente HTTP
+3. **ColisRepository.kt** - Lógica de repositorio
+4. **build.gradle** - Configuración de red (si es necesario)
+
+## 🌐 CONFIGURACIÓN DE RED:
+
+### Para Emulador:
+```kotlin
+const val BASE_URL = "http://10.0.2.2:3000"  // localhost del emulador
+```
+
+### Para Dispositivo Físico:
+```kotlin
+const val BASE_URL = "http://192.168.1.XXX:3000"  // IP de tu máquina en la red local
+```
+
+### Para Producción:
+```kotlin
+const val BASE_URL = "https://tu-dominio.com"  // Tu servidor en producción
+```
+
+## 🎯 BENEFICIOS DE LA INTEGRACIÓN:
+
+### ✅ **Optimización de Rutas:**
+- Tu backend puede **procesar y optimizar** las rutas antes de enviarlas a Android
+- **Algoritmos de optimización** personalizados
+- **Análisis de tráfico** y **condiciones de carretera**
+
+### ✅ **Caché Inteligente:**
+- **Almacenamiento local** de datos frecuentes
+- **Reducción de llamadas** a Colis Privé
+- **Mejor rendimiento** de la app
+
+### ✅ **Analytics y Monitoreo:**
+- **Tracking de entregas** en tiempo real
+- **Métricas de rendimiento** del conductor
+- **Reportes personalizados**
+
+### ✅ **Flexibilidad:**
+- **Cambios de configuración** sin actualizar la app
+- **A/B testing** de algoritmos de optimización
+- **Integración** con otros servicios
+
+## 🚀 FLUJO COMPLETO DESEADO:
+
+```
+1. Android → Tu Backend (/api/colis-prive/auth)
+2. Tu Backend → Colis Privé (con flujo completo)
+3. Colis Privé → Tu Backend (respuesta)
+4. Tu Backend → Procesa y optimiza datos
+5. Tu Backend → Android (datos optimizados)
+```
+
+## 📋 RESUMEN:
+
+**Android DEBE usar tu backend local** para que puedas:
+- ✅ **Optimizar rutas** de entrega
+- ✅ **Procesar datos** antes de enviarlos
+- ✅ **Implementar algoritmos** de optimización
+- ✅ **Crear valor agregado** en la app
+
+**No es solo autenticación - es OPTIMIZACIÓN INTELIGENTE DE RUTAS.** 🎯
+
+---
+
+**¡La app debe ser un sistema inteligente de optimización, no solo un cliente de Colis Privé!**

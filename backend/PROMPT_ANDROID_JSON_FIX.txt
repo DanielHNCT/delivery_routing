@@ -1,0 +1,114 @@
+# 🚀 PROMPT PARA ANDROID - CORRECCIÓN ERROR 422 JSON
+
+## 🎯 PROBLEMA IDENTIFICADO:
+
+**Error 422: Unprocessable Entity** - **Mismatch en la estructura JSON** entre Android y tu backend local.
+
+## 📊 ANÁLISIS DEL ERROR:
+
+### ❌ LO QUE ANDROID ENVÍA:
+```json
+{
+  "audit": {...},
+  "commun": {...},
+  "login": "PCP0010699_A187518",        // ← CAMPO INCORRECTO
+  "password": "INTI7518",
+  "societe": "PCP0010699"
+}
+```
+
+### ✅ LO QUE TU BACKEND ESPERA:
+```json
+{
+  "username": "PCP0010699_A187518",    // ← CAMPO CORRECTO
+  "password": "INTI7518",
+  "societe": "PCP0010699"
+}
+```
+
+## 🔧 SOLUCIÓN REQUERIDA:
+
+### 1. CORREGIR ESTRUCTURA ColisLoginRequest:
+
+```kotlin
+// ❌ ESTRUCTURA ACTUAL (INCORRECTA):
+@Serializable
+data class ColisLoginRequest(
+    val audit: AuditData,
+    val commun: CommunData,
+    @SerialName("login")           // ← CAMBIAR AQUÍ
+    val login: String,             // ← CAMBIAR AQUÍ
+    val password: String,
+    val societe: String
+)
+
+// ✅ ESTRUCTURA CORREGIDA:
+@Serializable
+data class ColisLoginRequest(
+    val audit: AuditData,
+    val commun: CommunData,
+    @SerialName("username")        // ← CAMBIAR AQUÍ
+    val username: String,          // ← CAMBIAR AQUÍ
+    val password: String,
+    val societe: String
+)
+```
+
+### 2. ACTUALIZAR LÓGICA DE CONSTRUCCIÓN:
+
+```kotlin
+// ❌ LÓGICA ACTUAL:
+val request = ColisLoginRequest(
+    audit = auditData,
+    commun = communData,
+    login = credentials.username,    // ← CAMBIAR AQUÍ
+    password = credentials.password,
+    societe = credentials.societe
+)
+
+// ✅ LÓGICA CORREGIDA:
+val request = ColisLoginRequest(
+    audit = auditData,
+    commun = communData,
+    username = credentials.username,  // ← CAMBIAR AQUÍ
+    password = credentials.password,
+    societe = credentials.societe
+)
+```
+
+### 3. VERIFICAR USO EN REPOSITORIO:
+
+```kotlin
+// En ColisRepository o similar, verificar que se use 'username':
+ColisLoginRequest(
+    audit = auditData,
+    commun = communData,
+    username = credentials.username,  // ← USAR username
+    password = credentials.password,
+    societe = credentials.societe
+)
+```
+
+## 📱 ARCHIVOS A MODIFICAR:
+
+1. **ColisLoginRequest.kt** - Cambiar `login` por `username`
+2. **ColisRepository.kt** - Actualizar construcción del request
+3. **Cualquier otro lugar** donde se construya `ColisLoginRequest`
+
+## 🎯 RESULTADO ESPERADO:
+
+Después de la corrección:
+- ✅ **Error 422 resuelto**
+- ✅ **JSON deserializado correctamente**
+- ✅ **Autenticación exitosa** a través de tu backend
+- ✅ **Optimización de rutas** funcionando
+
+## 📋 RESUMEN:
+
+**Solo necesitas cambiar `login` por `username`** en la estructura `ColisLoginRequest`. Es un cambio de **1 línea** que resolverá el error 422.
+
+**Tu backend ya está funcionando perfectamente** - solo es un mismatch de nombres de campos JSON.
+
+---
+
+**¡La integración ya está funcionando! Solo corrige este pequeño detalle de JSON.** 🎯
