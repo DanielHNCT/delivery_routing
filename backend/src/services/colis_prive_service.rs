@@ -40,17 +40,6 @@ pub struct GetTourneeRequest {
 pub struct ColisPriveService;
 
 impl ColisPriveService {
-    /// Crear DeviceInfo de prueba para el servicio
-    fn create_test_device_info() -> crate::external_models::DeviceInfo {
-        crate::external_models::DeviceInfo {
-            model: "Service Test Device".to_string(),
-            imei: "000000000000000".to_string(),
-            serial_number: "service123".to_string(),
-            android_version: "14".to_string(),
-            install_id: "service-install-id".to_string(),
-        }
-    }
-    
     /// Autenticar con Colis Privé usando credenciales dinámicas
     pub async fn authenticate_colis_prive(
         credentials: ColisPriveAuthRequest
@@ -59,38 +48,12 @@ impl ColisPriveService {
         credentials.validate()
             .map_err(|e| anyhow::anyhow!("Credenciales inválidas: {}", e))?;
 
-        // Crear cliente temporal
-        let mut client = ColisPriveClient::new(Self::create_test_device_info())?;
+        // ❌ PROBLEMA: No podemos autenticar sin device_info real de Android
+        // El device_info debe venir SIEMPRE del request de Android
+        anyhow::bail!("Este método requiere device_info real de Android. Use authenticate_colis_prive_with_device() en su lugar.");
 
-        // Intentar login
-        match client.login(&credentials.username, &credentials.password, &credentials.societe).await {
-            Ok(login_response) => {
-                // Verificar si la autenticación fue exitosa
-                if login_response.isAuthentif {
-                    Ok(ColisPriveAuthResponse {
-                        success: true,
-                        token: Some(login_response.tokens.SsoHopps),
-                        message: "Autenticación exitosa".to_string(),
-                        matricule: Some(login_response.matricule),
-                    })
-                } else {
-                    Ok(ColisPriveAuthResponse {
-                        success: false,
-                        token: None,
-                        message: "Credenciales inválidas".to_string(),
-                        matricule: None,
-                    })
-                }
-            }
-            Err(e) => {
-                Ok(ColisPriveAuthResponse {
-                    success: false,
-                    token: None,
-                    message: format!("Error de autenticación: {}", e),
-                    matricule: None,
-                })
-            }
-        }
+        // ❌ MÉTODO DEPRECADO: Use authenticate_colis_prive_with_device() en su lugar
+        anyhow::bail!("Este método requiere device_info real de Android. Use authenticate_colis_prive_with_device() en su lugar.");
     }
 
     /// Obtener datos de tournée usando credenciales dinámicas
@@ -99,25 +62,12 @@ impl ColisPriveService {
         date: &str,
         matricule: &str
     ) -> Result<String> {
-        // Crear cliente temporal
-        let mut client = ColisPriveClient::new(Self::create_test_device_info())?;
+        // ❌ PROBLEMA: No podemos obtener tournée sin device_info real de Android
+        // El device_info debe venir SIEMPRE del request de Android
+        anyhow::bail!("Este método requiere device_info real de Android. Use get_mobile_tournee() en su lugar.");
 
-        // Autenticar primero
-        let login_response = client.login(&credentials.username, &credentials.password, &credentials.societe).await?;
-        
-        if !login_response.isAuthentif {
-            anyhow::bail!("Credenciales inválidas para obtener tournée");
-        }
-
-        // Obtener tournée usando el método curl que funciona
-        let tournee_data = client.get_tournee_curl(
-            &login_response.tokens.SsoHopps,
-            &credentials.societe,
-            matricule,
-            date
-        ).await?;
-
-        Ok(tournee_data)
+        // ❌ MÉTODO DEPRECADO: Use get_mobile_tournee() en su lugar
+        anyhow::bail!("Método deprecado. Use get_mobile_tournee() que incluye device_info real de Android.");
     }
 
     /// Obtener tournée usando el endpoint móvil real de Colis Privé
@@ -145,37 +95,12 @@ impl ColisPriveService {
 
         let token = auth_result.token.unwrap();
         
-        // Crear cliente y llamar API móvil
-        let client = ColisPriveClient::new(Self::create_test_device_info())?;
+        // ❌ PROBLEMA: No podemos usar device info hardcodeado
+        // El device_info debe venir SIEMPRE del request de Android
+        anyhow::bail!("Este método requiere device_info real de Android. Use get_mobile_tournee_structured() en su lugar.");
         
-        // Crear credenciales para el cliente
-        let credentials = ColisPriveCredentials {
-            username: request.username.clone(),
-            password: request.password.clone(),
-            societe: request.societe.clone(),
-        };
-
-        // Llamar API móvil
-        match client.get_mobile_tournee(&credentials, &request.date, &request.matricule, &token).await {
-            Ok(mobile_data) => {
-                Ok(crate::external_models::MobileTourneeResponse {
-                    success: true,
-                    data: Some(mobile_data.clone()),
-                    message: "Datos de tournée móvil obtenidos exitosamente".to_string(),
-                    endpoint_used: "mobile".to_string(),
-                    total_packages: mobile_data.len(),
-                })
-            }
-            Err(e) => {
-                Ok(crate::external_models::MobileTourneeResponse {
-                    success: false,
-                    data: None,
-                    message: format!("Error obteniendo tournée móvil: {}", e),
-                    endpoint_used: "mobile".to_string(),
-                    total_packages: 0,
-                })
-            }
-        }
+        // ❌ MÉTODO DEPRECADO: Use get_mobile_tournee_structured() en su lugar
+        anyhow::bail!("Este método requiere device_info real de Android. Use get_mobile_tournee_structured() en su lugar.");
     }
 }
 
@@ -198,37 +123,12 @@ pub async fn authenticate_colis_prive_cached(
     // Si no está en cache, hacer request real
     tracing::info!("🔄 Autenticación no encontrada en cache, haciendo request real...");
     
-    // Crear DeviceInfo de prueba para el servicio
-    let test_device_info = crate::external_models::DeviceInfo {
-        model: "Service Test Device".to_string(),
-        imei: "000000000000000".to_string(),
-        serial_number: "service123".to_string(),
-        android_version: "14".to_string(),
-        install_id: "service-install-id".to_string(),
-    };
+    // ❌ PROBLEMA: No podemos usar device info hardcodeado
+    // El device_info debe venir SIEMPRE del request de Android
+    return Err(StatusCode::BAD_REQUEST);
     
-    let mut client = ColisPriveClient::new(test_device_info).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    match client.login(&credentials.username, &credentials.password, &credentials.societe).await {
-        Ok(auth_data) => {
-            // Guardar en cache
-            if let Err(e) = state.auth_cache.set_auth(&credentials.username, &credentials.societe, &auth_data.tokens.SsoHopps, &auth_data.matricule, 1800).await {
-                tracing::warn!("⚠️ Error guardando en cache: {}", e);
-            }
-            tracing::info!("💾 Autenticación guardada en cache para usuario: {}", credentials.username);
-            
-            Ok(Json(serde_json::json!({
-                "status": "success",
-                "message": "Autenticación exitosa (nueva)",
-                "data": auth_data,
-                "source": "api"
-            })))
-        }
-        Err(e) => {
-            tracing::error!("❌ Error en autenticación: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    // ❌ MÉTODO DEPRECADO: Use authenticate_colis_prive_with_device() en su lugar
+    return Err(StatusCode::BAD_REQUEST);
 }
 
 /// Obtener datos de tournée con cache
@@ -250,45 +150,10 @@ pub async fn get_tournee_data_cached(
     // Si no está en cache, hacer request real
     tracing::info!("🔄 Tournée no encontrada en cache, haciendo request real...");
     
-    // Crear DeviceInfo de prueba para el servicio
-    let test_device_info = crate::external_models::DeviceInfo {
-        model: "Service Test Device".to_string(),
-        imei: "000000000000000".to_string(),
-        serial_number: "service123".to_string(),
-        android_version: "14".to_string(),
-        install_id: "service-install-id".to_string(),
-    };
+    // ❌ PROBLEMA: No podemos usar device info hardcodeado
+    // El device_info debe venir SIEMPRE del request de Android
+    return Err(StatusCode::BAD_REQUEST);
     
-    let mut client = ColisPriveClient::new(test_device_info).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    // Primero autenticar
-    let credentials = ColisPriveCredentials {
-        username: request.username.clone(),
-        password: request.password.clone(),
-        societe: request.societe.clone(),
-    };
-    
-    let auth_result = client.login(&credentials.username, &credentials.password, &credentials.societe).await.map_err(|_| StatusCode::UNAUTHORIZED)?;
-    
-    // Obtener tournée usando el endpoint móvil
-    match client.get_mobile_tournee(&credentials, &request.date, &request.matricule, &auth_result.tokens.SsoHopps).await {
-        Ok(tournee_data) => {
-            // Guardar en cache
-            if let Err(e) = state.tournee_cache.set_tournee(&request.societe, &request.matricule, &request.date, &tournee_data, 900).await {
-                tracing::warn!("⚠️ Error guardando en cache: {}", e);
-            }
-            tracing::info!("💾 Tournée guardada en cache para: {}:{}:{}", request.societe, request.matricule, request.date);
-            
-            Ok(Json(serde_json::json!({
-                "status": "success",
-                "message": "Tournée obtenida exitosamente (nueva)",
-                "data": tournee_data,
-                "source": "api"
-            })))
-        }
-        Err(e) => {
-            tracing::error!("❌ Error obteniendo tournée: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    // ❌ MÉTODO DEPRECADO: Use get_mobile_tournee_structured() en su lugar
+    return Err(StatusCode::BAD_REQUEST);
 }

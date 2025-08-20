@@ -1,7 +1,7 @@
 use crate::external_models::{
     MobilePackageAction, ColisPriveCredentials, LoginRequest, 
     LoginResponse, RefreshTokenRequest, ColisAuthResponse, Commun, TourneeRequest,
-    DeviceInfo
+    DeviceInfo, ColisPriveOfficialLoginRequest, ColisPriveCommun
 };
 use anyhow::Result;
 use base64::Engine;
@@ -61,13 +61,15 @@ impl ColisPriveClient {
         // Crear audit data usando device info real
         let audit_data = create_audit_data(&self.device_info);
         
-        let login_req = LoginRequest {
-            login: login.to_string(),
+        // CORREGIDO: Usar estructura EXACTA de la app oficial
+        let login_req = ColisPriveOfficialLoginRequest {
+            audit: audit_data.clone(),  // CORREGIDO: Clonar para poder usar en debug
+            commun: ColisPriveCommun {
+                dureeTokenInHour: 0,  // Exacto como en la app oficial
+            },
+            login: format!("{} ", login),  // CORREGIDO: Agregar espacio al final como en la app oficial
             password: password.to_string(),
             societe: societe.to_string(),
-            commun: Commun {
-                duree_token_in_hour: 24,
-            },
         };
 
         debug!(
@@ -529,13 +531,25 @@ impl ColisPriveClient {
         let url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST";
         let headers = self.get_colis_headers("tournee", Some(username), Some(token));
         
-        debug!(
+        // Logging detallado de headers para tournée
+        let username_header = headers.get("UserName").map(|h| h.to_str().unwrap_or("ERROR"));
+        let societe_header = headers.get("Societe").map(|h| h.to_str().unwrap_or("ERROR"));
+        let token_header = headers.get("SsoHopps").map(|h| h.to_str().unwrap_or("ERROR"));
+        let activity_id_header = headers.get("ActivityId").map(|h| h.to_str().unwrap_or("ERROR"));
+        let device_header = headers.get("Device").map(|h| h.to_str().unwrap_or("ERROR"));
+        
+        info!(
             endpoint = "mobile_tournee_with_token",
             url = %url,
             request_body = ?body,
             headers_count = headers.len(),
+            username_header = ?username_header,
+            societe_header = ?societe_header,
+            token_preview = ?token_header.map(|t| &t[..20.min(t.len())]),
+            activity_id = ?activity_id_header,
+            device_header = ?device_header,
             has_sso_hopps = headers.contains_key("SsoHopps"),
-            "Using tournée headers and request body"
+            "Headers detallados para tournée"
         );
         
         let response = self.client

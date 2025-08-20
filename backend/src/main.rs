@@ -83,6 +83,17 @@ async fn main() -> Result<()> {
         .route("/api/colis-prive/refresh-token", post(api::colis_prive::refresh_colis_prive_token))
         .route("/api/colis-prive/mobile-tournee-with-retry", post(api::colis_prive::mobile_tournee_with_retry))
         .route("/api/colis-prive/health", get(api::colis_prive::health_check_colis_prive))
+        // NUEVOS ENDPOINTS PARA SISTEMA DE VERSIONES
+        // Sistema de versiones y reverse engineering (TEMPORALMENTE COMENTADO)
+        // .route("/api/colis-prive/check-version", post(api::colis_prive::check_app_version))
+        // .route("/api/colis-prive/download-version/:binary_id", get(api::colis_prive::download_app_version))
+        // .route("/api/colis-prive/audit-install", post(api::colis_prive::audit_app_install))
+        // .route("/api/colis_prive/versions", get(api::colis_prive::list_app_versions))
+        // .route("/api/colis-prive/version-stats", get(api::colis_prive::get_version_stats))
+        // .route("/api/colis-prive/start-reverse-engineering/:binary_id", post(api::colis_prive::start_reverse_engineering))
+        // NUEVOS ENDPOINTS PARA FLUJO COMPLETO (RESUELVE EL 401)
+        .route("/api/colis-prive/complete-auth-flow", post(api::colis_prive::complete_authentication_flow))
+        .route("/api/colis-prive/reconnect", post(api::colis_prive::handle_reconnection))
         .route("/api/migration/status", get(get_migration_status))
         .route("/api/migration/strategy", post(change_migration_strategy))
         .route("/api/migration/metrics", get(get_migration_metrics))
@@ -108,6 +119,16 @@ async fn main() -> Result<()> {
     info!("   POST /api/colis-prive/refresh-token - Refrescar token de Colis Privé");
     info!("   POST /api/colis-prive/mobile-tournee-with-retry - Tournée Móvil Colis Privé con retry");
     info!("   GET  /api/colis-prive/health - Health check Colis Privé");
+    // NUEVOS ENDPOINTS PARA SISTEMA DE VERSIONES (TEMPORALMENTE COMENTADO)
+    // info!("   POST /api/colis-prive/check-version - Verificar versión de la app");
+    // info!("   GET  /api/colis-prive/download-version/:binary_id - Descargar versión de la app");
+    // info!("   POST /api/colis-prive/audit-install - Registrar auditoría de instalación");
+    // info!("   GET  /api/colis-prive/versions - Listar versiones disponibles");
+    // info!("   GET  /api/colis-prive/version-stats - Obtener estadísticas de versiones");
+    // info!("   POST /api/colis-prive/start-reverse-engineering/:binary_id - Iniciar reverse engineering");
+    // NUEVOS ENDPOINTS PARA FLUJO COMPLETO (RESUELVE EL 401)
+    info!("   POST /api/colis-prive/complete-auth-flow - Flujo completo de autenticación (RESUELVE EL 401)");
+    info!("   POST /api/colis-prive/reconnect - Manejo específico de reconexión (RESUELVE EL 401)");
     info!("   GET  /api/migration/status - Estado de migración");
     info!("   POST /api/migration/strategy - Cambiar estrategia");
     info!("   GET  /api/migration/metrics - Métricas de migración");

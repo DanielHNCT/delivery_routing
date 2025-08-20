@@ -1,7 +1,7 @@
 use reqwest::header::HeaderMap;
 use uuid::Uuid;
 use crate::external_models::DeviceInfo;
-use tracing::{debug, info};
+use tracing::{debug, info, warn, error};
 
 /// Generar headers exactos de la app oficial de Colis Privé usando device info dinámico
 pub fn get_colis_headers(
@@ -10,6 +10,9 @@ pub fn get_colis_headers(
     username: Option<&str>,
     token: Option<&str>,
 ) -> HeaderMap {
+    // Verificar consistencia de device info ANTES de generar headers
+    verify_device_info_consistency(endpoint, device_info, username, token);
+    
     let mut headers = HeaderMap::new();
     
     // Generar ActivityId único por request
@@ -27,7 +30,12 @@ pub fn get_colis_headers(
     headers.insert("AppName", "CP DISTRI V2".parse().unwrap());
     headers.insert("AppIdentifier", "com.danem.cpdistriv2".parse().unwrap());
     headers.insert("Device", device_info.model.parse().unwrap());
-    headers.insert("VersionOS", device_info.android_version.parse().unwrap());
+    // CORREGIDO: Usar solo la versión sin "Android" y "(API XX)"
+    let clean_version = device_info.android_version
+        .replace("Android ", "")
+        .replace(" (API ", "")
+        .replace(")", "");
+    headers.insert("VersionOS", clean_version.parse().unwrap());
     headers.insert("VersionApplication", "3.3.0.9".parse().unwrap()); // CRÍTICO - fijo
     headers.insert("VersionCode", "1".parse().unwrap());
     headers.insert("Domaine", "Membership".parse().unwrap());
@@ -60,17 +68,36 @@ pub fn get_colis_headers(
             // Solo los core headers son necesarios
         }
         "tournee" => {
-            // Para tournée, agregar headers específicos
+            // HEADERS CRÍTICOS PARA TOURNÉE - Basados en tráfico real capturado
+            headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+            headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
+            headers.insert("Cache-Control", "no-cache".parse().unwrap());
+            headers.insert("Pragma", "no-cache".parse().unwrap());
+            headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
+            headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
             headers.insert("X-Requested-With", "XMLHttpRequest".parse().unwrap());
             headers.insert("X-Device-Info", "Android".parse().unwrap());
+            
+            // HEADERS ESPECÍFICOS DE TOURNÉE - CRÍTICOS para evitar 401
+            headers.insert("Host", "wstournee-v2.colisprive.com".parse().unwrap());
+            headers.insert("Connection", "Keep-Alive".parse().unwrap());
+            headers.insert("Accept-Encoding", "gzip, deflate".parse().unwrap());
+            
+            // VERIFICAR QUE USERNAME Y SOCIETE ESTÉN PRESENTES
+            if username.is_none() {
+                warn!("⚠️ TOURNÉE: Username faltante - puede causar 401");
+            }
+            if token.is_none() {
+                warn!("⚠️ TOURNÉE: Token faltante - puede causar 401");
+            }
         }
         _ => {
             // Headers por defecto para otros endpoints
         }
     }
     
-    // Logging seguro de headers generados
-    debug!(
+    // Logging detallado de headers generados
+    info!(
         endpoint = %endpoint,
         activity_id = %activity_id,
         device_model = %device_info.model,
@@ -81,28 +108,91 @@ pub fn get_colis_headers(
         "Headers generados para endpoint"
     );
     
+    // Logging detallado de headers críticos para tournée
+    if endpoint == "tournee" {
+        let username_header = headers.get("UserName").map(|h| h.to_str().unwrap_or("ERROR"));
+        let societe_header = headers.get("Societe").map(|h| h.to_str().unwrap_or("ERROR"));
+        let token_header = headers.get("SsoHopps").map(|h| {
+            let token = h.to_str().unwrap_or("ERROR");
+            if token.len() > 20 {
+                format!("{}...", &token[..20])
+            } else {
+                token.to_string()
+            }
+        });
+        
+        info!(
+            endpoint = "tournee",
+            username_header = ?username_header,
+            societe_header = ?societe_header,
+            token_preview = ?token_header,
+            activity_id = %activity_id,
+            "Headers críticos para tournée verificados"
+        );
+        
+        // Verificar headers obligatorios para tournée
+        let required_headers = ["UserName", "Societe", "SsoHopps", "ActivityId", "Device"];
+        for header_name in &required_headers {
+            if !headers.contains_key(*header_name) {
+                warn!("⚠️ TOURNÉE: Header faltante: {} - puede causar 401", header_name);
+            }
+        }
+    }
+    
     headers
 }
 
-/// Crear audit data usando device info real
+/// Verificar consistencia de device info entre endpoints
+pub fn verify_device_info_consistency(
+    endpoint: &str,
+    device_info: &DeviceInfo,
+    username: Option<&str>,
+    token: Option<&str>,
+) {
+    info!(
+        endpoint = %endpoint,
+        device_model = %device_info.model,
+        android_version = %device_info.android_version,
+        has_username = username.is_some(),
+        has_token = token.is_some(),
+        "Verificando consistencia de device info"
+    );
+    
+    // Verificar que device info sea consistente
+    if device_info.model.is_empty() || device_info.android_version.is_empty() {
+        warn!("⚠️ {}: Device info incompleto - puede causar problemas", endpoint);
+    }
+    
+    // Verificar que username esté presente en endpoints autenticados
+    if endpoint == "tournee" && username.is_none() {
+        error!("❌ TOURNÉE: Username faltante - causará 401");
+    }
+    
+    // Verificar que token esté presente en endpoints autenticados
+    if endpoint == "tournee" && token.is_none() {
+        error!("❌ TOURNÉE: Token faltante - causará 401");
+    }
+}
+
+/// Crear audit data usando device info real - FORMATO EXACTO de la app oficial
 pub fn create_audit_data(device_info: &DeviceInfo) -> serde_json::Value {
     let audit_data = serde_json::json!({
         "appName": "CP DISTRI V2",
-        "deviceModelName": device_info.model,
-        "imei": device_info.imei,
-        "noSerie": device_info.serial_number,
-        "iccid": "indisponible",
-        "msisdn": "indisponible",
         "cle1": "",
         "cle2": "",
-        "cle3": ""
+        "cle3": "",
+        "deviceModelName": device_info.model,
+        "iccid": "indisponible",
+        "imei": device_info.imei,
+        "msisdn": "indisponible",
+        "noSerie": "3qtg83zdy95jmczkeiyx1rfa9"  // CORREGIDO: Usar el valor exacto de la app oficial
     });
     
     info!(
         device_model = %device_info.model,
         imei_preview = %&device_info.imei[..8.min(device_info.imei.len())],
         serial_preview = %&device_info.serial_number[..8.min(device_info.serial_number.len())],
-        "Audit data creado con device info real"
+        "Audit data creado con device info real - FORMATO EXACTO de la app oficial"
     );
     
     audit_data

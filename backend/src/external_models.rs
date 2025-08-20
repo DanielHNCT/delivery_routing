@@ -9,6 +9,141 @@ pub struct LoginRequest {
     pub commun: Commun,
 }
 
+// NUEVO: Estructura EXACTA de la app oficial de Colis Privé
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ColisPriveOfficialLoginRequest {
+    pub audit: serde_json::Value,
+    pub commun: ColisPriveCommun,
+    pub login: String,  // Con espacio al final como en la app oficial
+    pub password: String,
+    pub societe: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ColisPriveCommun {
+    pub dureeTokenInHour: i32,  // Exacto como en la app oficial
+}
+
+// NUEVO: Sistema completo de versiones de la app
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionCheckRequest {
+    pub username: String,
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+    pub build: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionCheckResponse {
+    pub has_update: bool,
+    pub version: String,
+    pub download_url: Option<String>,
+    pub binary_id: Option<String>,
+    pub is_mandatory: bool,
+    pub changelog: Option<String>,
+    pub file_size: Option<u64>,
+    pub checksum: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuditInstallRequest {
+    pub version: String,
+    pub device_info: DeviceInfo,
+    pub install_result: String,
+    pub binary_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuditInstallResponse {
+    pub success: bool,
+    pub message: String,
+    pub audit_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppVersion {
+    pub version: String,
+    pub binary_id: String,
+    pub download_date: String,
+    pub apk_path: String,
+    pub file_size: u64,
+    pub checksum: String,
+    pub reverse_engineering_status: String,
+    pub analysis_report: Option<serde_json::Value>,
+}
+
+// NUEVO: Device Audit - EXACTO como la app oficial
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeviceAuditRequest {
+    pub device_cpu: String,
+    pub device_disk: String,
+    pub device_id_device: String,
+    pub device_langue: String,
+    pub device_os: String,
+    pub device_ram: String,
+    pub device_version: String,
+    pub id_externe_application: String,
+    pub is_install_ok: bool,
+    pub matricule: String,
+    pub num_application_version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeviceAuditResponse {
+    pub success: bool,
+    pub message: String,
+    pub audit_id: Option<String>,
+}
+
+// NUEVO: Version Check - EXACTO como la app oficial
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionCheckRealRequest {
+    pub username: String,
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+    pub build: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionCheckRealResponse {
+    pub has_update: bool,
+    pub version: String,
+    pub download_url: Option<String>,
+    pub binary_id: Option<String>,
+    pub is_mandatory: bool,
+    pub changelog: Option<String>,
+}
+
+// NUEVO: Logging automático - EXACTO como la app oficial
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogMobiliteRequest {
+    pub app_name: String,
+    pub indiana_version: String,
+    pub date_logged: String,
+    pub dns_host_name: String,
+    pub exception: String,
+    pub ip_address: String,
+    pub log_level: String,
+    pub logger: String,
+    pub memory: String,
+    pub message: String,
+    pub parameters: String,
+    pub screen_name: String,
+    pub session_id: String,
+    pub thread: String,
+    pub trace: String,
+    pub user_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogMobiliteResponse {
+    pub success: bool,
+    pub message: String,
+    pub log_id: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Commun {
     pub duree_token_in_hour: i32,
@@ -307,42 +442,7 @@ pub struct CommunData {
     pub duree_token_in_hour: u32,
 }
 
-// Estructura para Device Audit
-#[derive(Serialize)]
-pub struct DeviceAuditRequest {
-    #[serde(rename = "deviceCPU")]
-    pub device_cpu: String,
-    #[serde(rename = "deviceDisk")]
-    pub device_disk: String,
-    #[serde(rename = "deviceIdDevice")]
-    pub device_id_device: String,
-    #[serde(rename = "deviceLangue")]
-    pub device_langue: String,
-    #[serde(rename = "deviceOs")]
-    pub device_os: String,
-    #[serde(rename = "deviceRam")]
-    pub device_ram: String,
-    #[serde(rename = "deviceVersion")]
-    pub device_version: String,
-    #[serde(rename = "idExterneApplication")]
-    pub id_externe_application: String,
-    #[serde(rename = "isInstallOK")]
-    pub is_install_ok: bool,
-    pub matricule: String,
-    #[serde(rename = "numApplicationVersion")]
-    pub num_application_version: String,
-}
-
-// Estructura para Version Check Response
-#[derive(Deserialize)]
-pub struct VersionCheckResponse {
-    #[serde(rename = "ApplicationVersion_id")]
-    pub application_version_id: Option<u32>,
-    #[serde(rename = "IsObligatoire")]
-    pub is_obligatoire: Option<bool>,
-    #[serde(rename = "Action")]
-    pub action: Option<String>,
-}
+// Estructuras duplicadas eliminadas - ya definidas arriba
 
 // Estructura para respuesta de login actualizada
 #[derive(Deserialize)]
