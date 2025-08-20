@@ -1,15 +1,14 @@
 package com.daniel.deliveryrouting.data.api.models
 
 import com.google.gson.annotations.SerializedName
+import com.daniel.deliveryrouting.utils.DeviceInfo
 
 // Colis Privé Authentication Models
 data class ColisLoginRequest(
-    val audit: AuditData,
-    val commun: CommunData,
-    @SerializedName("username")  // ✅ CAMBIADO: login → username para coincidir con backend
-    val username: String,        // ✅ CAMBIADO: login → username para coincidir con backend
-    val password: String,
-    val societe: String
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("societe") val societe: String,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
 )
 
 data class AuditData(
@@ -44,15 +43,6 @@ data class ColisLoginResponse(
     val matricule: String?,
     val tokens: TokensData?,
     val shortToken: ShortTokenData?
-)
-
-// Device Information Models
-data class DeviceInfo(
-    val model: String,
-    val serialNumber: String,
-    val imei: String = "indisponible",
-    val iccid: String = "indisponible",
-    val msisdn: String = "indisponible"
 )
 
 // SOAP Response Models

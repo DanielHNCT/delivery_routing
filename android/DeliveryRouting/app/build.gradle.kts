@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.daniel.deliveryrouting"
-        minSdk = 24
+        minSdk = 21  // ✅ CAMBIADO: Compatible con Android 5.0+ (incluye tu Xperia Z1)
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"

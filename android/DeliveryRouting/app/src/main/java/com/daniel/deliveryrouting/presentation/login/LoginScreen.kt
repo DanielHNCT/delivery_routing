@@ -1,6 +1,8 @@
 package com.daniel.deliveryrouting.presentation.login
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,9 +37,10 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()), // ✅ AGREGADO: Scroll vertical
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top // ✅ CAMBIADO: Top en lugar de Center para mejor scroll
     ) {
         // 🚀 TÍTULO
         Text(
@@ -54,7 +57,7 @@ fun LoginScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp)) // ✅ REDUCIDO: De 32dp a 16dp
         
         // 📝 CAMPOS DE LOGIN
         OutlinedTextField(
@@ -67,7 +70,7 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp)) // ✅ REDUCIDO: De 16dp a 12dp
         
         OutlinedTextField(
             value = password,
@@ -80,7 +83,7 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp)) // ✅ REDUCIDO: De 16dp a 12dp
         
         // 🏢 SELECTOR DE EMPRESA
         CompanySelector(
@@ -88,7 +91,7 @@ fun LoginScreen(
             onCompanySelected = { selectedCompany = it }
         )
         
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp)) // ✅ REDUCIDO: De 32dp a 16dp
         
         // 📋 MOSTRAR REQUEST QUE SE CONSTRUIRÁ
         if (tourneeNumber.isNotBlank()) {
@@ -120,7 +123,7 @@ fun LoginScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp)) // ✅ REDUCIDO: De 16dp a 12dp
         }
         
         // 🔐 BOTÓN DE LOGIN
@@ -150,7 +153,7 @@ fun LoginScreen(
             }
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp)) // ✅ REDUCIDO: De 16dp a 12dp
         
         // 📊 ESTADO DE CONEXIÓN
         when (loginState) {
@@ -176,8 +179,19 @@ fun LoginScreen(
                 )
             }
             else -> {
+                // ✅ CAMBIADO: Mostrar URL real del backend basada en detección de dispositivo
+                val backendUrl = if (android.os.Build.MODEL.contains("D5503") || 
+                                     android.os.Build.MANUFACTURER.contains("Sony")) {
+                    "http://192.168.1.9:3000"  // ✅ Sony Xperia Z1 - IP real
+                } else if (android.os.Build.FINGERPRINT.contains("generic") || 
+                           android.os.Build.FINGERPRINT.contains("unknown")) {
+                    "http://10.0.2.2:3000"     // ✅ Emulador
+                } else {
+                    "http://192.168.1.9:3000"  // ✅ Otros dispositivos físicos
+                }
+                
                 Text(
-                    text = "🌐 Backend: http://10.0.2.2:3000",
+                    text = "🌐 Backend: $backendUrl",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -186,7 +200,7 @@ fun LoginScreen(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 📱 INFORMACIÓN DEL DISPOSITIVO
+        // 📱 INFORMACIÓN DEL DISPOSITIVO (COMPACTA)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -194,23 +208,17 @@ fun LoginScreen(
             )
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(12.dp) // ✅ REDUCIDO: De 16dp a 12dp
             ) {
                 Text(
-                    text = "📱 Información del Dispositivo",
-                    style = MaterialTheme.typography.titleSmall,
+                    text = "📱 ${android.os.Build.MODEL} (Android ${android.os.Build.VERSION.RELEASE})",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Modelo: ${android.os.Build.MODEL}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    text = "Android: ${android.os.Build.VERSION.RELEASE}",
-                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
+        
+        // 📱 ESPACIO FINAL PARA SCROLL
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }

@@ -45,3 +45,4 @@ object ColisHttpClient {
     
     val client: OkHttpClient by lazy { createUnsafeOkHttpClient() }
 }
+

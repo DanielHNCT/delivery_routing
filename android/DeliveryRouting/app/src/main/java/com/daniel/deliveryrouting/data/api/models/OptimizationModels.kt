@@ -148,3 +148,4 @@ data class RouteSavings(
     @SerializedName("fuelSavedLiters") val fuelSavedLiters: Double,
     @SerializedName("co2ReductionKg") val co2ReductionKg: Double
 )
+

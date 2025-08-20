@@ -2,8 +2,6 @@ package com.daniel.deliveryrouting.data.api
 
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import android.util.Log
 
@@ -14,7 +12,7 @@ object NetworkModule {
         level = HttpLoggingInterceptor.Level.BODY
     }
 
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
@@ -36,14 +34,6 @@ object NetworkModule {
             response
         }
         .build()
-
-    val apiService: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(ApiConfig.BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-    }
 }
+
 

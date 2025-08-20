@@ -22,11 +22,8 @@ object EnvironmentConfig {
     fun getBaseUrl(): String {
         return when (currentEnvironment) {
             Environment.DEVELOPMENT -> {
-                // Para emulador Android Studio
-                "http://10.0.2.2:3000"
-                
-                // Para dispositivo físico en misma red, usar:
-                // "http://192.168.1.9:3000"  // IP de tu máquina
+                // ✅ DETECCIÓN AUTOMÁTICA DEL DISPOSITIVO
+                getBackendUrlForDevice()
             }
             Environment.PRODUCTION -> {
                 // Colis Privé directo (no recomendado, perdemos optimización)
@@ -36,11 +33,33 @@ object EnvironmentConfig {
     }
     
     /**
+     * 🌐 OBTENER URL DEL BACKEND SEGÚN EL DISPOSITIVO
+     */
+    private fun getBackendUrlForDevice(): String {
+        return if (android.os.Build.MODEL.contains("D5503") || 
+                   android.os.Build.MODEL.contains("Sony") ||
+                   android.os.Build.MANUFACTURER.contains("Sony")) {
+            // Es tu Sony Xperia Z1 - usar IP real del nuevo backend
+            "http://192.168.1.100:3000"  // 🆕 NUEVO BACKEND CON FLUJO COMPLETO
+        } else if (android.os.Build.FINGERPRINT.contains("generic") || 
+                   android.os.Build.FINGERPRINT.contains("unknown") ||
+                   android.os.Build.MODEL.contains("google_sdk") ||
+                   android.os.Build.MODEL.contains("Emulator") ||
+                   android.os.Build.MODEL.contains("Android SDK built for x86")) {
+            // Es un emulador
+            "http://10.0.2.2:3000"
+        } else {
+            // Otros dispositivos físicos
+            "http://192.168.1.100:3000"  // 🆕 NUEVO BACKEND CON FLUJO COMPLETO
+        }
+    }
+    
+    /**
      * Obtiene los endpoints según el entorno
      */
     fun getAuthEndpoint(): String {
         return when (currentEnvironment) {
-            Environment.DEVELOPMENT -> "/api/colis-prive/auth"  // Tu backend
+            Environment.DEVELOPMENT -> "/api/colis-prive/mobile-tournee-with-retry"  // ✅ CAMBIADO: Endpoint que acepta device_info real
             Environment.PRODUCTION -> "/api/auth/login/Membership"  // Colis Privé directo
         }
     }
@@ -70,6 +89,11 @@ object EnvironmentConfig {
         Log.d("EnvironmentConfig", "Tournée Endpoint: ${getTourneeEndpoint()}")
         Log.d("EnvironmentConfig", "Usando backend local: ${isUsingLocalBackend()}")
         
+        // ✅ AGREGADO: Información del dispositivo
+        Log.d("EnvironmentConfig", "📱 Device Model: ${android.os.Build.MODEL}")
+        Log.d("EnvironmentConfig", "📱 Device Manufacturer: ${android.os.Build.MANUFACTURER}")
+        Log.d("EnvironmentConfig", "📱 Device Fingerprint: ${android.os.Build.FINGERPRINT}")
+        
         if (isUsingLocalBackend()) {
             Log.d("EnvironmentConfig", "✅ PERFECTO: Usando backend local para optimización de rutas")
         } else {
@@ -77,3 +101,4 @@ object EnvironmentConfig {
         }
     }
 }
+

@@ -1,6 +1,7 @@
 package com.daniel.deliveryrouting.data.api.models
 
 import com.google.gson.annotations.SerializedName
+import com.daniel.deliveryrouting.utils.DeviceInfo
 
 // TODO: MAPBOX INTEGRATION
 // When adding Mapbox:
@@ -41,33 +42,34 @@ data class TokenData(
     @SerializedName("SsoHopps") val ssoHopps: String
 )
 
-// 🔄 REQUEST PARA REFRESH TOKEN
+// 🔐 REQUEST MODELS ACTUALIZADOS
+// ColisLoginRequest movida a ColisModels.kt para evitar duplicación
+
 data class RefreshTokenRequest(
-    @SerializedName("dureeTokenInHour") val dureeTokenInHour: Int = 0,
-    val token: String
+    @SerializedName("token") val token: String,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
 )
 
-// 🚪 REQUEST PARA LOGIN INICIAL (SISTEMA DE TOKENS)
-data class ColisTokenLoginRequest(
-    val username: String,
-    val password: String,
-    val societe: String
-)
-
-// Request Models
-data class LoginRequest(
-    @SerializedName("username") val username: String,
-    @SerializedName("password") val password: String,
-    @SerializedName("societe") val societe: String  // ← NUEVO CAMPO
-)
-
+// 🎯 REQUEST PARA TOURNÉE CON AUTO-RETRY (endpoint principal)
 data class TourneeRequest(
     @SerializedName("username") val username: String,
     @SerializedName("password") val password: String,
     @SerializedName("societe") val societe: String,
     @SerializedName("date") val date: String,
     @SerializedName("matricule") val matricule: String,
-    @SerializedName("token") val token: String? = null // Para retry con token específico
+    @SerializedName("token") val token: String? = null,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
+)
+
+// 🎯 REQUEST PARA AUTENTICACIÓN CON TOURNÉE (nuevo endpoint principal)
+data class TourneeRequestWithRetry(
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("societe") val societe: String,
+    @SerializedName("date") val date: String,
+    @SerializedName("matricule") val matricule: String,
+    @SerializedName("token") val token: String? = null,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
 )
 
 data class TourneeUpdateRequest(
@@ -108,17 +110,119 @@ data class ErrorInfo(
     @SerializedName("message") val message: String
 )
 
+// 📦 NUEVOS MODELOS PARA TOURNÉE CON AUTO-RETRY
 data class TourneeResponse(
     @SerializedName("success") val success: Boolean,
-    @SerializedName("data") val data: TourneeData?,
-    @SerializedName("message") val message: String?
+    @SerializedName("message") val message: String,
+    @SerializedName("data") val data: List<MobilePackageAction>?,
+    @SerializedName("endpoint_used") val endpoint_used: String,
+    @SerializedName("total_packages") val total_packages: Int
 )
 
-data class TourneeData(
-    @SerializedName("tourneeCode") val tourneeCode: String,
-    @SerializedName("date") val date: String,
-    @SerializedName("packages") val packages: List<Package>
+data class MobilePackageAction(
+    @SerializedName("package_info") val package_info: PackageInfo,
+    @SerializedName("customer") val customer: Customer,
+    @SerializedName("location") val location: Location,
+    @SerializedName("timing") val timing: Timing,
+    @SerializedName("status") val status: Status
 )
+
+data class PackageInfo(
+    @SerializedName("id") val id: String,
+    @SerializedName("reference") val reference: String,
+    @SerializedName("barcode") val barcode: String,
+    @SerializedName("tourneeCode") val tourneeCode: String
+)
+
+data class Customer(
+    @SerializedName("name") val name: String,
+    @SerializedName("phone") val phone: String?,
+    @SerializedName("email") val email: String?
+)
+
+data class Location(
+    @SerializedName("formattedAddress") val formattedAddress: String,
+    @SerializedName("city") val city: String,
+    @SerializedName("postalCode") val postalCode: String,
+    @SerializedName("latitude") val latitude: Double?,
+    @SerializedName("longitude") val longitude: Double?
+)
+
+data class Timing(
+    @SerializedName("estimatedTime") val estimatedTime: String?,
+    @SerializedName("priority") val priority: String?
+)
+
+data class Status(
+    @SerializedName("code") val code: String,
+    @SerializedName("label") val label: String,
+    @SerializedName("isCompleted") val isCompleted: Boolean
+)
+
+// 🆕 NUEVO: Request para flujo completo de autenticación (RESUELVE EL 401)
+data class CompleteAuthFlowRequest(
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("societe") val societe: String,
+    @SerializedName("date") val date: String,
+    @SerializedName("matricule") val matricule: String,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
+)
+
+// 🆕 NUEVO: Request para reconexión (RESUELVE EL 401)
+data class ReconnectionRequest(
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("societe") val societe: String,
+    @SerializedName("date") val date: String,
+    @SerializedName("matricule") val matricule: String,
+    @SerializedName("device_info") val deviceInfo: DeviceInfo
+)
+
+// 🆕 NUEVO: Response del flujo completo
+data class AuthResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("message") val message: String,
+    @SerializedName("flow_result") val flowResult: FlowResult?,
+    @SerializedName("reconnection_result") val reconnectionResult: FlowResult?,
+    @SerializedName("timestamp") val timestamp: String,
+    @SerializedName("error") val error: ErrorInfo?
+)
+
+data class FlowResult(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("flow_completed") val flowCompleted: Boolean,
+    @SerializedName("session_id") val sessionId: String,
+    @SerializedName("activity_id") val activityId: String,
+    @SerializedName("timestamp") val timestamp: String,
+    @SerializedName("steps") val steps: FlowSteps,
+    @SerializedName("message") val message: String
+)
+
+data class FlowSteps(
+    @SerializedName("device_audit") val deviceAudit: StepResult,
+    @SerializedName("version_check") val versionCheck: StepResult,
+    @SerializedName("login") val login: StepResult,
+    @SerializedName("logging") val logging: StepResult
+)
+
+data class StepResult(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("status") val status: Int,
+    @SerializedName("message") val message: String,
+    @SerializedName("response") val response: String
+)
+
+// 🏥 HEALTH CHECK RESPONSE
+data class HealthResponse(
+    @SerializedName("status") val status: String,
+    @SerializedName("colis_prive_connection") val colis_prive_connection: Boolean,
+    @SerializedName("timestamp") val timestamp: String,
+    @SerializedName("version") val version: String
+)
+
+// 🗺️ ROUTE OPTIMIZATION MODELS (futuro)
+// Eliminadas las clases duplicadas - ver OptimizationModels.kt
 
 // Core Models with GPS Coordinates (Ready for Mapbox)
 data class Package(
