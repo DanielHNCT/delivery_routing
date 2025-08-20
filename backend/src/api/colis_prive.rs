@@ -299,23 +299,82 @@ pub async fn refresh_colis_prive_token(
     State(_state): State<AppState>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Json<ColisAuthResponse>, StatusCode> {
-    println!("🔄 REFRESH TOKEN - Token anterior: {}...", &request.token[..50.min(request.token.len())]);
+    use tracing::{info, warn, error, debug};
     
+    // Logging seguro - nunca logear tokens completos
+    info!(
+        endpoint = "refresh_token",
+        token_preview = %&request.token[..20.min(request.token.len())],
+        token_length = request.token.len(),
+        duree_token_in_hour = request.duree_token_in_hour,
+        "Starting Colis Privé token refresh"
+    );
+    
+    // Crear cliente con SSL bypass y headers exactos
     let mut client = crate::client::ColisPriveClient::new()
         .map_err(|e| {
-            println!("Error creando cliente: {}", e);
+            error!(
+                error = %e,
+                context = "client_creation",
+                "Failed to create Colis Privé client"
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     
-    // Usar el método refresh_token del cliente
+    // Request body exacto como especificaste
+    let refresh_request = json!({
+        "dureeTokenInHour": request.duree_token_in_hour,
+        "token": request.token
+    });
+    
+    debug!(
+        url = "https://wsauthentificationexterne.colisprive.com/api/auth/login-token",
+        body_size = refresh_request.to_string().len(),
+        "Sending refresh token request to Colis Privé"
+    );
+    
+    // Usar el método refresh_token del cliente (ya usa headers correctos)
     match client.refresh_token(&request.token).await {
         Ok(auth_response) => {
-            println!("✅ Token refresh exitoso");
+            info!(
+                endpoint = "refresh_token",
+                success = true,
+                new_token_preview = %&auth_response.tokens.sso_hopps[..20.min(auth_response.tokens.sso_hopps.len())],
+                new_token_length = auth_response.tokens.sso_hopps.len(),
+                is_authentif = auth_response.is_authentif,
+                "Token refresh successful"
+            );
+            
+            // Verificar que la autenticación sea válida
+            if !auth_response.is_authentif {
+                warn!(
+                    endpoint = "refresh_token",
+                    is_authentif = false,
+                    "Refresh token returned invalid authentication"
+                );
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+            
             Ok(Json(auth_response))
         }
         Err(e) => {
-            println!("❌ Error en refresh token: {}", e);
-            Err(StatusCode::UNAUTHORIZED)
+            error!(
+                error = %e,
+                context = "token_refresh",
+                endpoint = "refresh_token",
+                "Token refresh failed"
+            );
+            
+            // Determinar el status code apropiado basado en el error
+            let status_code = if e.to_string().contains("401") || e.to_string().contains("Unauthorized") {
+                StatusCode::UNAUTHORIZED
+            } else if e.to_string().contains("timeout") || e.to_string().contains("Timeout") {
+                StatusCode::REQUEST_TIMEOUT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            
+            Err(status_code)
         }
     }
 }
@@ -325,11 +384,25 @@ pub async fn mobile_tournee_with_retry(
     State(_state): State<AppState>,
     Json(request): Json<TourneeRequestWithToken>,
 ) -> Result<Json<MobileTourneeResponse>, StatusCode> {
-    println!("📱 TOURNÉE CON AUTO-RETRY - Username: {}", request.username);
+    use tracing::{info, warn, error, debug};
+    
+    info!(
+        endpoint = "mobile_tournee_with_retry",
+        username = %request.username,
+        matricule = %request.matricule,
+        date = %request.date,
+        has_token = request.token.is_some(),
+        "Starting mobile tournée with auto-retry"
+    );
     
     let mut client = crate::client::ColisPriveClient::new()
         .map_err(|e| {
-            println!("Error creando cliente: {}", e);
+            error!(
+                error = %e,
+                context = "client_creation",
+                endpoint = "mobile_tournee_with_retry",
+                "Failed to create Colis Privé client"
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     
@@ -338,21 +411,49 @@ pub async fn mobile_tournee_with_retry(
     
     // Si no hay token, hacer login primero
     let token = if let Some(token) = request.token {
-        println!("🔑 Usando token existente");
+        info!(
+            endpoint = "mobile_tournee_with_retry",
+            token_preview = %&token[..20.min(token.len())],
+            "Using existing token for tournée"
+        );
         token
     } else {
-        println!("🔐 No hay token, haciendo login inicial...");
+        info!(
+            endpoint = "mobile_tournee_with_retry",
+            username = %username,
+            "No token provided, performing initial login"
+        );
+        
         // Usar el método login existente
         let auth_response = client.login(username, &request.password, &request.societe).await.map_err(|e| {
-            println!("❌ Login inicial falló: {}", e);
+            error!(
+                error = %e,
+                context = "initial_login",
+                endpoint = "mobile_tournee_with_retry",
+                username = %username,
+                "Initial login failed"
+            );
             StatusCode::UNAUTHORIZED
         })?;
         
         // Extraer token del response (LoginResponse usa tokens.SsoHopps)
-        auth_response.tokens.SsoHopps.clone()
+        let new_token = auth_response.tokens.SsoHopps.clone();
+        info!(
+            endpoint = "mobile_tournee_with_retry",
+            token_preview = %&new_token[..20.min(new_token.len())],
+            "Initial login successful, obtained token"
+        );
+        new_token
     };
     
-    // Intentar tournée con token
+    // Intento 1: con token actual
+    debug!(
+        endpoint = "mobile_tournee_with_retry",
+        attempt = 1,
+        token_preview = %&token[..20.min(token.len())],
+        "Attempting tournée with current token"
+    );
+    
     match client.get_mobile_tournee_with_token(
         username,
         &request.password,
@@ -361,7 +462,12 @@ pub async fn mobile_tournee_with_retry(
         &token
     ).await {
         Ok(packages_json) => {
-            println!("✅ Tournée exitosa con token actual");
+            info!(
+                endpoint = "mobile_tournee_with_retry",
+                attempt = 1,
+                success = true,
+                "Tournée successful with current token"
+            );
             
             // Convertir Value a Vec<MobilePackageAction> si es posible
             let packages: Vec<MobilePackageAction> = serde_json::from_value(packages_json.clone())
@@ -378,17 +484,39 @@ pub async fn mobile_tournee_with_retry(
             Ok(Json(tournee_response))
         }
         Err(e) => {
-            if e.to_string().contains("401") || e.to_string().contains("Unauthorized") {
-                println!("🔄 Token expirado, haciendo refresh...");
+            if e.to_string().contains("401") || e.to_string().contains("Unauthorized") || e.to_string().contains("Token expirado") {
+                warn!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 1,
+                    error = %e,
+                    "Token expired, attempting refresh"
+                );
+                
+                // Intento 2: Refresh token y retry
+                debug!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 2,
+                    "Starting token refresh for retry"
+                );
                 
                 // Refresh token
                 let refresh_response = client.refresh_token(&token).await.map_err(|refresh_e| {
-                    println!("❌ Refresh token falló: {}", refresh_e);
+                    error!(
+                        error = %refresh_e,
+                        context = "token_refresh",
+                        endpoint = "mobile_tournee_with_retry",
+                        "Token refresh failed during retry"
+                    );
                     StatusCode::UNAUTHORIZED
                 })?;
                 
                 let new_token = refresh_response.tokens.sso_hopps;
-                println!("🔑 Nuevo token obtenido: {}...", &new_token[..50.min(new_token.len())]);
+                info!(
+                    endpoint = "mobile_tournee_with_retry",
+                    attempt = 2,
+                    new_token_preview = %&new_token[..20.min(new_token.len())],
+                    "Token refresh successful, retrying tournée"
+                );
                 
                 // Retry con nuevo token
                 match client.get_mobile_tournee_with_token(

@@ -39,30 +39,71 @@ impl ColisPriveClient {
         })
     }
 
-    /// Obtener headers comunes para todas las requests
-    fn get_common_headers(&self) -> reqwest::header::HeaderMap {
+    /// Obtener headers exactos de la app oficial de Colis Privé
+    fn get_colis_headers(&self, endpoint: &str, username: Option<&str>, token: Option<&str>) -> reqwest::header::HeaderMap {
         let mut headers = reqwest::header::HeaderMap::new();
+        let activity_id = Uuid::new_v4().to_string(); // UUID único por request
         
+        // CORE HEADERS (todos los endpoints)
         headers.insert("Accept-Charset", "UTF-8".parse().unwrap());
-        headers.insert("ActivityId", self.activity_id.parse().unwrap());
-        headers.insert("AppName", "CP DISTRI V2".parse().unwrap());
-        headers.insert("AppIdentifier", "com.danem.cpdistriv2".parse().unwrap());
-        headers.insert("Device", "Sony D5503".parse().unwrap());
-        headers.insert("VersionOS", "5.1.1".parse().unwrap());
-        headers.insert("VersionApplication", "3.3.0.9".parse().unwrap());
-        headers.insert("VersionCode", "1".parse().unwrap());
-        headers.insert("Societe", "PCP0010699".parse().unwrap());
-        headers.insert("Domaine", "Membership".parse().unwrap());
         headers.insert("Content-Type", "application/json; charset=UTF-8".parse().unwrap());
         headers.insert("Connection", "Keep-Alive".parse().unwrap());
         headers.insert("Accept-Encoding", "gzip".parse().unwrap());
         headers.insert("User-Agent", "okhttp/3.4.1".parse().unwrap());
-        headers.insert("X-Requested-With", "XMLHttpRequest".parse().unwrap());
-        headers.insert("X-Device-Info", "Android".parse().unwrap());
-        headers.insert("X-App-Build", "1".parse().unwrap());
-        headers.insert("X-Network-Type", "WIFI".parse().unwrap());
+        
+        // APP IDENTIFICATION (exactamente como la app oficial)
+        headers.insert("ActivityId", activity_id.parse().unwrap());
+        headers.insert("AppName", "CP DISTRI V2".parse().unwrap());
+        headers.insert("AppIdentifier", "com.danem.cpdistriv2".parse().unwrap());
+        headers.insert("Device", "Sony D5503".parse().unwrap());
+        headers.insert("VersionOS", "5.1.1".parse().unwrap());
+        headers.insert("VersionApplication", "3.3.0.9".parse().unwrap()); // CRÍTICO
+        headers.insert("VersionCode", "1".parse().unwrap());
+        headers.insert("Domaine", "Membership".parse().unwrap());
+        
+        // USER CONTEXT (cuando aplique)
+        if let Some(username) = username {
+            // Solo username sin prefijo (ej: "A187518" no "PCP0010699_A187518")
+            let clean_username = username.split('_').last().unwrap_or(username);
+            headers.insert("UserName", clean_username.parse().unwrap());
+            headers.insert("Societe", "PCP0010699".parse().unwrap());
+        }
+        
+        // TOKEN (solo en requests autenticados)
+        if let Some(token) = token {
+            headers.insert("SsoHopps", token.parse().unwrap());
+        }
+        
+        // HEADERS ESPECÍFICOS POR ENDPOINT
+        match endpoint {
+            "auth" | "login" => {
+                headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+                headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
+                headers.insert("Cache-Control", "no-cache".parse().unwrap());
+                headers.insert("Pragma", "no-cache".parse().unwrap());
+                headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
+                headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
+            }
+            "refresh" => {
+                // Para refresh token, no agregar headers adicionales
+                // Solo los core headers son necesarios
+            }
+            "tournee" => {
+                // Para tournée, agregar headers específicos si es necesario
+                headers.insert("X-Requested-With", "XMLHttpRequest".parse().unwrap());
+                headers.insert("X-Device-Info", "Android".parse().unwrap());
+            }
+            _ => {
+                // Headers por defecto para otros endpoints
+            }
+        }
         
         headers
+    }
+
+    /// Obtener headers comunes para todas las requests (método legacy - mantener compatibilidad)
+    fn get_common_headers(&self) -> reqwest::header::HeaderMap {
+        self.get_colis_headers("default", None, None)
     }
 
     pub async fn login(&mut self, login: &str, password: &str, societe: &str) -> Result<LoginResponse> {
@@ -80,14 +121,7 @@ impl ColisPriveClient {
         println!("🔐 URL de login: {}", url);
         println!("📤 Enviando request: {:?}", login_req);
 
-        let mut headers = self.get_common_headers();
-        // Agregar headers específicos del login
-        headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
-        headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
-        headers.insert("Cache-Control", "no-cache".parse().unwrap());
-        headers.insert("Pragma", "no-cache".parse().unwrap());
-        headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
-        headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
+        let headers = self.get_colis_headers("login", Some(login), None);
 
         let response = self.client
             .post(&url)
@@ -352,11 +386,9 @@ impl ColisPriveClient {
         println!("📅 Fecha: {}", date);
         println!("🆔 Matrícula: {}", matricule);
 
-        // Usar headers correctos de la app oficial
-        let mut headers = self.get_common_headers();
-        headers.insert("SsoHopps", token.parse().unwrap());
-        // Remover headers que no son necesarios para este endpoint
-        headers.remove("Content-Type"); // Se establece automáticamente con .json()
+        // Usar headers exactos de la app oficial
+        let username = credentials.username.split('_').last().unwrap_or(&credentials.username);
+        let headers = self.get_colis_headers("tournee", Some(username), Some(token));
         
         let response = self.client
             .post("https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST")
@@ -392,7 +424,7 @@ impl ColisPriveClient {
         });
         
         let url = format!("{}/api/auth/login-token", self.auth_base_url);
-        let headers = self.get_common_headers();
+        let headers = self.get_colis_headers("refresh", None, None);
         
         println!("🔐 URL de refresh: {}", url);
         println!("📤 Enviando refresh request: {:?}", refresh_request);
@@ -445,9 +477,7 @@ impl ColisPriveClient {
         });
         
         let url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST";
-        let mut headers = self.get_common_headers();
-        // Agregar el token SsoHopps
-        headers.insert("SsoHopps", token.parse().unwrap());
+        let headers = self.get_colis_headers("tournee", Some(username), Some(token));
         
         println!("📱 URL de tournée: {}", url);
         println!("🔑 Token usado: {}...", &token[..50.min(token.len())]);
