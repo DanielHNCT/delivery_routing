@@ -132,7 +132,8 @@ class ColisRepository(private val context: Context) {
                 societe = societe,
                 date = currentDate,
                 matricule = matricule,         // ✅ Usar matrícula extraída: "PCP0010699_A187518"
-                deviceInfo = deviceInfo
+                deviceInfo = deviceInfo,
+                apiChoice = "mobile"           // 🆕 NUEVO: Indicar que es API Mobile
             )
             
             Log.d(TAG, "📡 Enviando request de flujo completo...")
@@ -189,6 +190,104 @@ class ColisRepository(private val context: Context) {
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error en flujo completo: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 🌐 AUTENTICACIÓN WEB (API SIMPLE)
+     */
+    suspend fun authenticateWeb(
+        username: String,
+        password: String,
+        societe: String
+    ): Result<AuthResponse> = withContext(Dispatchers.IO) {
+        
+        try {
+            val backendUrl = getBackendUrl()
+            Log.d(TAG, "🌐 === INICIO AUTENTICACIÓN WEB (API SIMPLE) ===")
+            Log.d(TAG, "Username: $username")
+            Log.d(TAG, "Societe: $societe")
+            Log.d(TAG, "Backend: $backendUrl")
+            Log.d(TAG, "📱 Device Model: ${android.os.Build.MODEL}")
+            Log.d(TAG, "📱 Device Manufacturer: ${android.os.Build.MANUFACTURER}")
+            
+            // Obtener device info único
+            val deviceInfo = deviceInfoManager.getDeviceInfo()
+            deviceInfoManager.logDeviceInfo()
+            
+            // ✅ CORREGIDO: Usar username directamente sin duplicar societe
+            val currentDate = getCurrentDate()
+            val matricule = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
+            val usernameCorrected = extractUsername(username) // ✅ "A187518"
+            
+            Log.d(TAG, "🆔 Username recibido: $username")
+            Log.d(TAG, "🆔 Matrícula para Colis Privé: $matricule")
+            Log.d(TAG, "🆔 Username corregido: $usernameCorrected")
+            
+            // 🆕 NUEVO: Usar autenticación web simple
+            val request = CompleteAuthFlowRequest(
+                username = usernameCorrected,  // ✅ Usar username corregido: "A187518"
+                password = password,
+                societe = societe,
+                date = currentDate,
+                matricule = matricule,         // ✅ Usar matrícula extraída: "PCP0010699_A187518"
+                deviceInfo = deviceInfo,
+                apiChoice = "web"              // 🆕 NUEVO: Indicar que es API Web
+            )
+            
+            Log.d(TAG, "📡 Enviando request de autenticación web...")
+            
+            val activityId = UUID.randomUUID().toString()
+            val loginDeviceInfo = deviceInfoManager.getDeviceInfo()
+            
+            // 🆕 NUEVO: Llamar al endpoint de autenticación web
+            val response = api.completeAuthenticationFlow(
+                request = request,
+                activityId = activityId,
+                device = loginDeviceInfo.model,  // ✅ Device real del dispositivo
+                versionOS = loginDeviceInfo.androidVersion  // ✅ Version real de Android
+            )
+            
+            Log.d(TAG, "📡 Response code: ${response.code()}")
+            
+            when {
+                response.isSuccessful -> {
+                    val authData = response.body()!!
+                    Log.d(TAG, "✅ Autenticación web exitosa")
+                    
+                    // Guardar tokens en el manager (si hay)
+                    if (authData.flowResult?.success == true) {
+                        // Crear BackendAuthResponse compatible
+                        val authenticationData = AuthenticationData(
+                            matricule = matricule,
+                            message = authData.message,
+                            token = authData.flowResult?.sessionId ?: ""
+                        )
+                        val backendAuthResponse = BackendAuthResponse(
+                            authentication = authenticationData,
+                            success = authData.success,
+                            timestamp = authData.timestamp
+                        )
+                        tokenManager.saveTokens(backendAuthResponse)
+                    }
+                    
+                    // Retornar success
+                    Result.success(authData)
+                }
+                response.code() == 401 -> {
+                    Log.e(TAG, "❌ 401 Unauthorized en autenticación web")
+                    Result.failure(Exception("Autenticación web falló: 401 Unauthorized"))
+                }
+                else -> {
+                    val errorMsg = "Error HTTP en autenticación web: ${response.code()}"
+                    Log.e(TAG, "❌ $errorMsg")
+                    Result.failure(Exception(errorMsg))
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error en autenticación web: ${e.message}", e)
             Result.failure(e)
         }
     }

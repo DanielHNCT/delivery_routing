@@ -25,6 +25,7 @@ fun LoginScreen(
     var tourneeNumber by remember { mutableStateOf("A187518") }  // Valor por defecto para testing
     var password by remember { mutableStateOf("INTI7518") }      // Valor por defecto para testing
     var selectedCompany by remember { mutableStateOf(Companies.INTI) }  // Empresa por defecto
+    var selectedApiType by remember { mutableStateOf(ApiTypes.WEB) }    // API por defecto (Web)
     
     val loginState by viewModel.loginState.collectAsState()
     
@@ -85,10 +86,12 @@ fun LoginScreen(
         
         Spacer(modifier = Modifier.height(12.dp)) // ✅ REDUCIDO: De 16dp a 12dp
         
-        // 🏢 SELECTOR DE EMPRESA
+        // 🏢 SELECTOR DE API Y EMPRESA
         CompanySelector(
             selectedCompany = selectedCompany,
-            onCompanySelected = { selectedCompany = it }
+            onCompanySelected = { selectedCompany = it },
+            selectedApiType = selectedApiType,
+            onApiTypeSelected = { selectedApiType = it }
         )
         
         Spacer(modifier = Modifier.height(16.dp)) // ✅ REDUCIDO: De 32dp a 16dp
@@ -110,6 +113,11 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "API: ${selectedApiType.displayName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
                     Text(
                         text = "username: ${selectedCompany.internalCode}_${tourneeNumber}",
                         style = MaterialTheme.typography.bodySmall,
@@ -134,7 +142,8 @@ fun LoginScreen(
                     val fullUsername = "${selectedCompany.internalCode}_${tourneeNumber}"
                     val societe = selectedCompany.internalCode
                     
-                    viewModel.login(fullUsername, password, societe)
+                    // 🚀 ENVIAR TIPO DE API SELECCIONADO
+                    viewModel.login(fullUsername, password, societe, selectedApiType.internalCode)
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -149,7 +158,7 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Conectando...")
             } else {
-                Text("🔐 Conectar al Backend")
+                Text("🔐 Conectar al Backend (${selectedApiType.displayName})")
             }
         }
         
@@ -159,7 +168,7 @@ fun LoginScreen(
         when (loginState) {
             is LoginState.Loading -> {
                 Text(
-                    text = "🔄 Conectando a tu backend local...",
+                    text = "🔄 Conectando a tu backend local (${selectedApiType.displayName})...",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -191,7 +200,7 @@ fun LoginScreen(
                 }
                 
                 Text(
-                    text = "🌐 Backend: $backendUrl",
+                    text = "🌐 Backend: $backendUrl (${selectedApiType.displayName})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -19,22 +19,38 @@ class LoginViewModel(
     private val _loginState = MutableStateFlow<LoginState>(LoginState.Idle)
     val loginState: StateFlow<LoginState> = _loginState.asStateFlow()
 
-    fun login(username: String, password: String, societe: String) {
+    fun login(username: String, password: String, societe: String, apiType: String = "web") {
         Log.d("LoginViewModel", "=== INICIO LOGIN ===")
         Log.d("LoginViewModel", "Username: $username")
         Log.d("LoginViewModel", "Password length: ${password.length}")
         Log.d("LoginViewModel", "Societe: $societe")
+        Log.d("LoginViewModel", "API Type: $apiType")
 
         _loginState.value = LoginState.Loading
 
         viewModelScope.launch {
             try {
-                Log.d("LoginViewModel", "Llamando repository.authenticate...")
-                val result = repository.authenticate(username, password, societe)
+                Log.d("LoginViewModel", "Llamando repository.authenticate con API: $apiType...")
+                
+                // 🚀 RUTEAR SEGÚN TIPO DE API
+                val result = when (apiType) {
+                    "web" -> {
+                        Log.d("LoginViewModel", "🌐 Usando API Web (más simple)")
+                        repository.authenticateWeb(username, password, societe)
+                    }
+                    "mobile" -> {
+                        Log.d("LoginViewModel", "📱 Usando API Mobile (completa)")
+                        repository.authenticate(username, password, societe)
+                    }
+                    else -> {
+                        Log.d("LoginViewModel", "🌐 API no especificada, usando Web por defecto")
+                        repository.authenticateWeb(username, password, societe)
+                    }
+                }
                 
                 result.fold(
                     onSuccess = { response ->
-                        Log.d("LoginViewModel", "✅ LOGIN EXITOSO CON FLUJO COMPLETO")
+                        Log.d("LoginViewModel", "✅ LOGIN EXITOSO CON API: $apiType")
                         Log.d("LoginViewModel", "Flow Result: ${response.flowResult?.success}")
                         Log.d("LoginViewModel", "Session ID: ${response.flowResult?.sessionId?.take(50)}...")
                         _loginState.value = LoginState.Success(
@@ -43,16 +59,16 @@ class LoginViewModel(
                         )
                     },
                     onFailure = { exception ->
-                        Log.e("LoginViewModel", "❌ LOGIN FALLÓ", exception)
+                        Log.e("LoginViewModel", "❌ LOGIN FALLÓ CON API: $apiType", exception)
                         _loginState.value = LoginState.Error(
-                            message = exception.message ?: "Error desconocido en login"
+                            message = "Error con API $apiType: ${exception.message ?: "Error desconocido"}"
                         )
                     }
                 )
             } catch (e: Exception) {
-                Log.e("LoginViewModel", "❌ EXCEPCIÓN EN LOGIN", e)
+                Log.e("LoginViewModel", "❌ EXCEPCIÓN EN LOGIN CON API: $apiType", e)
                 _loginState.value = LoginState.Error(
-                    message = e.message ?: "Excepción inesperada en login"
+                    message = "Excepción con API $apiType: ${e.message ?: "Excepción inesperada"}"
                 )
             }
         }

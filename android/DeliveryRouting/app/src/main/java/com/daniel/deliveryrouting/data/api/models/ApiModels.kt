@@ -166,7 +166,8 @@ data class CompleteAuthFlowRequest(
     @SerializedName("societe") val societe: String,
     @SerializedName("date") val date: String,
     @SerializedName("matricule") val matricule: String,
-    @SerializedName("device_info") val deviceInfo: DeviceInfo
+    @SerializedName("device_info") val deviceInfo: DeviceInfo,
+    @SerializedName("api_choice") val apiChoice: String = "web"  // 🆕 NUEVO: Campo para seleccionar API
 )
 
 // 🆕 NUEVO: Request para reconexión (RESUELVE EL 401)
@@ -176,7 +177,8 @@ data class ReconnectionRequest(
     @SerializedName("societe") val societe: String,
     @SerializedName("date") val date: String,
     @SerializedName("matricule") val matricule: String,
-    @SerializedName("device_info") val deviceInfo: DeviceInfo
+    @SerializedName("device_info") val deviceInfo: DeviceInfo,
+    @SerializedName("api_choice") val apiChoice: String = "web"  // 🆕 NUEVO: Campo para seleccionar API
 )
 
 // 🆕 NUEVO: Response del flujo completo
