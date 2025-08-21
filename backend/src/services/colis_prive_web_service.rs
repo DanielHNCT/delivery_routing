@@ -176,6 +176,10 @@ impl ColisPriveWebService {
 
         let mut headers = get_web_headers()?;
         headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
+        
+        // 🆕 NUEVO: Logging detallado de headers
+        debug!("🔍 Headers antes de enviar tournée: {:?}", headers);
+        debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
 
         let response = self.client
             .post(&url)
@@ -260,6 +264,10 @@ impl ColisPriveWebService {
 
         let mut headers = get_web_headers()?;
         headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
+        
+        // 🆕 NUEVO: Logging detallado de headers
+        debug!("🔍 Headers antes de enviar lettre: {:?}", headers);
+        debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
 
         let response = self.client
             .post(&url)
