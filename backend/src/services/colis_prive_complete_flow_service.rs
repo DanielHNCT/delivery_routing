@@ -325,6 +325,7 @@ impl ColisPriveCompleteFlowService {
         
         // ✅ CORRECCIÓN: Endpoint exacto del APK oficial v3.3.0.9
         // APK: @GET("api/android/Application/{p_id}/CheckVersionForUser/{p_user}/Version/{p_version1}/{p_version2}/{p_version3}/{p_version4}/{p_IMEI}/{p_ICCID}/{p_MSISDN}/{p_IdTel}")
+        // URL BASE: https://store.colisprive.com/WebApi/STORE/ (según config.xml del APK)
         let url = format!(
             "{}/api/android/Application/{}/CheckVersionForUser/{}/Version/{}/{}/{}/{}/{}/{}/{}/{}",
             self.store_base_url,
