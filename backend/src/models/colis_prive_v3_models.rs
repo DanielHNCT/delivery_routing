@@ -127,17 +127,51 @@ pub struct SessionInfo {
 }
 
 // ============================================================================
-// PASO 4: LOGGING AUTOMÁTICO - Confirmación de sesión
+// PASO 4: LOGGING AUTOMÁTICO - Confirmación de sesión (REPRODUCCIÓN 100% APP OFICIAL)
 // ============================================================================
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogMobiliteRequest {
-    pub matricule: String,
-    pub type_log: String,
-    pub message: String,
-    pub timestamp: String,
-    pub device_info: DeviceInfo,
-    pub session_id: Option<String>,
+    // ✅ REPRODUCCIÓN EXACTA DE LA APP OFICIAL
+    pub AppName: String,                    // "CP DISTRI V2"
+    pub IndianaVersion: String,             // "3.3.0.9"
+    pub DateLogged: String,                 // "/Date(1755716094136)/"
+    pub DnsHostName: String,                // ""
+    pub Exception: String,                  // ""
+    pub IpAdress: String,                   // ""
+    pub LogLevel: String,                   // "Info"
+    pub Logger: String,                     // "AndroidLogger"
+    pub Memory: String,                     // ""
+    pub Message: String,                    // "[GPS] No lastKnownLocation received from Android API"
+    pub Parameters: String,                 // "IdDevice: 3qtg83zdy95jmczkeiyx1rfa9\nDevice: Sony D5503\n"
+    pub ScreenName: String,                 // "SplashScreenActivity"
+    pub SessionId: String,                  // "e3a135c1-4435-4e97-a613-2fab30653dfc"
+    pub Thread: String,                     // ""
+    pub Trace: String,                      // ""
+    pub UserName: String,                   // ""
+}
+
+impl Default for LogMobiliteRequest {
+    fn default() -> Self {
+        Self {
+            AppName: "CP DISTRI V2".to_string(),
+            IndianaVersion: "3.3.0.9".to_string(),
+            DateLogged: String::new(),
+            DnsHostName: String::new(),
+            Exception: String::new(),
+            IpAdress: String::new(),
+            LogLevel: "Info".to_string(),
+            Logger: "AndroidLogger".to_string(),
+            Memory: String::new(),
+            Message: String::new(),
+            Parameters: String::new(),
+            ScreenName: String::new(),
+            SessionId: String::new(),
+            Thread: String::new(),
+            Trace: String::new(),
+            UserName: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -154,8 +188,12 @@ pub struct LogMobiliteResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TourneeRequestV3 {
-    pub date_debut: String,
-    pub matricule: String,
+    // ✅ REPRODUCCIÓN 100% APP OFICIAL
+    pub DateDebut: String,      // ✅ Campo correcto según APK
+    pub Matricule: String,      // ✅ Campo correcto según APK
+    pub Societe: String,        // ✅ Campo requerido según APK
+    pub Agence: String,         // ✅ Campo requerido según APK
+    pub Concentrateur: String,  // ✅ Campo requerido según APK
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use serde_json::json;
 use tracing::{info, warn, error, debug, instrument};
 use reqwest::{Client, Response};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::{Engine as _, engine::general_purpose};
 use uuid::Uuid;
 use chrono::Utc;
@@ -435,13 +435,35 @@ impl ColisPriveCompleteFlowService {
         
         let url = format!("{}/WS_Commun/ServiceWCFLogSpir.svc/REST/LogMobilite", self.log_base_url);
         
+        // ✅ REPRODUCCIÓN 100% APP OFICIAL: Construir request body exacto
+        let current_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        
+        let parameters = format!(
+            "IdDevice: {}\nDevice: {}\n",
+            flow_state.device_info.android_id,
+            flow_state.device_info.model
+        );
+        
         let request_body = LogMobiliteRequest {
-            matricule: matricule.clone(), // ✅ CORRECCIÓN: Usar matricule real
-            type_log: "SESSION_START".to_string(),
-            message: "Sesión iniciada exitosamente".to_string(),
-            timestamp: Utc::now().to_rfc3339(),
-            device_info: flow_state.device_info.clone(),
-            session_id: flow_state.session_id.clone(),
+            AppName: "CP DISTRI V2".to_string(),
+            IndianaVersion: "3.3.0.9".to_string(),
+            DateLogged: format!("/Date({})/", current_timestamp),
+            DnsHostName: String::new(),
+            Exception: String::new(),
+            IpAdress: String::new(),
+            LogLevel: "Info".to_string(),
+            Logger: "AndroidLogger".to_string(),
+            Memory: String::new(),
+            Message: "Session started successfully".to_string(),
+            Parameters: parameters,
+            ScreenName: "LoginActivity".to_string(),
+            SessionId: flow_state.session_id.clone().unwrap_or_default(),
+            Thread: String::new(),
+            Trace: String::new(),
+            UserName: username.to_string(),
         };
 
         debug!("🔗 Logging Automático URL: {}", url);
@@ -515,9 +537,13 @@ impl ColisPriveCompleteFlowService {
         
         let url = format!("{}/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST", self.tournee_base_url);
         
+        // ✅ REPRODUCCIÓN 100% APP OFICIAL: Construir request body exacto
         let request_body = TourneeRequestV3 {
-            date_debut: date.to_string(),
-            matricule: matricule.clone(), // ✅ CORRECCIÓN: Usar matricule real
+            DateDebut: date.to_string(),                    // ✅ Campo correcto según APK
+            Matricule: matricule.clone(),                   // ✅ Campo correcto según APK
+            Societe: flow_state.app_info.societe.clone(),   // ✅ Campo requerido según APK
+            Agence: "".to_string(),                         // ✅ Campo requerido según APK (vacío por defecto)
+            Concentrateur: "".to_string(),                  // ✅ Campo requerido según APK (vacío por defecto)
         };
 
         debug!("🔗 Tournée URL: {}", url);
