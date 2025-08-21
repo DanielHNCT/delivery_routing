@@ -323,8 +323,10 @@ impl ColisPriveCompleteFlowService {
         let version3 = version_parts.get(2).unwrap_or(&"0");
         let version4 = version_parts.get(3).unwrap_or(&"9");
         
+        // ✅ CORRECCIÓN: Endpoint exacto del APK oficial v3.3.0.9
+        // APK: @GET("api/android/Application/{p_id}/CheckVersionForUser/{p_user}/Version/{p_version1}/{p_version2}/{p_version3}/{p_version4}/{p_IMEI}/{p_ICCID}/{p_MSISDN}/{p_IdTel}")
         let url = format!(
-            "{}/WebApi/STORE/api/android/Application/{}/CheckVersionForUser/{}/Version/{}/{}/{}/{}/{}/{}/{}/{}",
+            "{}/api/android/Application/{}/CheckVersionForUser/{}/Version/{}/{}/{}/{}/{}/{}/{}/{}",
             self.store_base_url,
             app_info.app_identifier,                    // p_id: com.danem.cpdistriv2
             matricule,                                  // p_user: PCP0010699_A187518
