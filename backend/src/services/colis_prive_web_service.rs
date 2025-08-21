@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 use tracing::{info, error, debug, warn};
 use crate::models::colis_prive_web_models::*;
 use crate::utils::headers::get_web_headers;
+use http::header::HeaderName;
 
 /// Servicio para la API Web real de Colis Privé
 /// Implementa el flujo completo basado en el tráfico capturado
@@ -175,7 +176,10 @@ impl ColisPriveWebService {
         debug!("📋 Tournée Request: {:?}", request_body);
 
         let mut headers = get_web_headers()?;
-        headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
+        
+        // 🆕 CORRECCIÓN: Usar HeaderName::from_static para preservar el case exacto
+        let sso_hopps_header = HeaderName::from_static("SsoHopps");
+        headers.insert(sso_hopps_header, HeaderValue::from_str(sso_hopps)?);
         
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar tournée: {:?}", headers);
@@ -273,7 +277,10 @@ impl ColisPriveWebService {
         debug!("📋 Letter Request: {:?}", request_body);
 
         let mut headers = get_web_headers()?;
-        headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
+        
+        // 🆕 CORRECCIÓN: Usar HeaderName::from_static para preservar el case exacto
+        let sso_hopps_header = HeaderName::from_static("SsoHopps");
+        headers.insert(sso_hopps_header, HeaderValue::from_str(sso_hopps)?);
         
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar lettre: {:?}", headers);
