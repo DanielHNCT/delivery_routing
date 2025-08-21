@@ -57,7 +57,7 @@ impl ColisPriveWebService {
         debug!("🔗 Login URL: {}", url);
 
         let request_body = WebLoginRequest {
-            login: username.to_string(),
+            login: format!("{}_{}", societe, username), // 🆕 CORREGIDO: SOCIETE_USERNAME
             password: password.to_string(),
             societe: societe.to_string(),
             commun: WebLoginCommun {
