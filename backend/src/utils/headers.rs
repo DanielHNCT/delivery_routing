@@ -261,6 +261,32 @@ pub fn get_v3_headers(
     Ok(headers)
 }
 
+/// Generar headers para la API Web real de Colis Privé
+/// Basados en el tráfico capturado del navegador
+pub fn get_web_headers() -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    
+    // HEADERS EXACTOS DEL TRÁFICO CAPTURADO
+    headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+    headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
+    headers.insert("Cache-Control", "no-cache".parse().unwrap());
+    headers.insert("Connection", "keep-alive".parse().unwrap());
+    headers.insert("Content-Type", "application/json".parse().unwrap());
+    headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
+    headers.insert("Pragma", "no-cache".parse().unwrap());
+    headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
+    headers.insert("Sec-GPC", "1".parse().unwrap());
+    headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36".parse().unwrap());
+    
+    // HEADERS SECURITY (opcionales pero recomendados)
+    headers.insert("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"".parse().unwrap());
+    headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
+    headers.insert("sec-ch-ua-platform", "\"macOS\"".parse().unwrap());
+    
+    debug!("🌐 Headers Web API generados: {:?}", headers);
+    Ok(headers)
+}
+
 /// Crear cliente HTTP con SSL bypass para Colis Privé
 pub fn create_colis_client() -> Result<reqwest::Client, reqwest::Error> {
     let client = reqwest::Client::builder()
