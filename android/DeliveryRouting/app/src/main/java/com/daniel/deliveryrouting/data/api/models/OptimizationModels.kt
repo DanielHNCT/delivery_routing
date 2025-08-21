@@ -56,23 +56,8 @@ data class OptimizedLocation(
     @SerializedName("drivingTimeFromPrevious") val drivingTimeFromPrevious: Int?  // minutos
 )
 
-// Ruta Optimizada
-data class OptimizedRoute(
-    @SerializedName("waypoints") val waypoints: List<RouteWaypoint>,
-    @SerializedName("totalDistance") val totalDistance: Double,  // metros
-    @SerializedName("totalDuration") val totalDuration: Int,     // minutos
-    @SerializedName("optimizationAlgorithm") val optimizationAlgorithm: String,
-    @SerializedName("trafficConditions") val trafficConditions: String?
-)
-
-// Punto de la Ruta
-data class RouteWaypoint(
-    @SerializedName("latitude") val latitude: Double,
-    @SerializedName("longitude") val longitude: Double,
-    @SerializedName("packageId") val packageId: String?,
-    @SerializedName("address") val address: String?,
-    @SerializedName("order") val order: Int
-)
+// NOTA: OptimizedRoute y RouteWaypoint están definidos en TourneeModels.kt
+// para evitar duplicación
 
 // Metadata de Optimización
 data class OptimizationMetadata(
