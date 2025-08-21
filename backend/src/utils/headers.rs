@@ -265,7 +265,7 @@ pub fn get_v3_headers(
 /// Basados en el tráfico capturado del navegador
 pub fn get_web_headers() -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
-    
+
     // HEADERS EXACTOS DEL TRÁFICO CAPTURADO
     headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
     headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
@@ -277,12 +277,15 @@ pub fn get_web_headers() -> Result<HeaderMap> {
     headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
     headers.insert("Sec-GPC", "1".parse().unwrap());
     headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36".parse().unwrap());
-    
-    // HEADERS SECURITY (opcionales pero recomendados)
+
+    // 🆕 NUEVO: HEADERS SECURITY COMPLETOS DEL TRÁFICO REAL
+    headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
+    headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
+    headers.insert("Sec-Fetch-Site", "same-site".parse().unwrap());
     headers.insert("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"".parse().unwrap());
     headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
     headers.insert("sec-ch-ua-platform", "\"macOS\"".parse().unwrap());
-    
+
     debug!("🌐 Headers Web API generados: {:?}", headers);
     Ok(headers)
 }
