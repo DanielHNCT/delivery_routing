@@ -391,3 +391,14 @@ impl Default for AppInfo {
         }
     }
 }
+
+impl Default for DeviceAuditRequest {
+    fn default() -> Self {
+        Self {
+            device_info: DeviceInfo::default(),
+            app_info: AppInfo::default(),
+            install_id: "dev_install_001".to_string(),  // ✅ HARDCODEADO para desarrollo
+            timestamp: Utc::now().to_rfc3339(),
+        }
+    }
+}
