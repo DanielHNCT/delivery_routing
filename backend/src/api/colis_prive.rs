@@ -9,7 +9,9 @@ use crate::{
     services::colis_prive_service::{ColisPriveService, ColisPriveAuthRequest, GetTourneeRequest},
     services::app_version_service::AppVersionService,
     services::colis_prive_flow_service::ColisPriveFlowService,
+    services::colis_prive_complete_flow_service::ColisPriveCompleteFlowService,
     utils::extract_structured_data_for_mobile,
+    models::colis_prive_v3_models::{CompleteFlowRequest, DeviceInfo as DeviceInfoV3},
 };
 use std::sync::Arc;
 use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse, VersionCheckRequest, AuditInstallRequest};
@@ -738,6 +740,211 @@ pub async fn handle_reconnection(
                 "error": {
                     "message": format!("Error interno del servidor: {}", e),
                     "code": "SERVICE_INIT_FAILED"
+                },
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            Ok(Json(error_response))
+        }
+    }
+}
+
+
+// ====================================================================
+// NUEVOS ENDPOINTS v3.3.0.9 - FLUJO COMPLETO EXACTO DE LA APP OFICIAL
+// ====================================================================
+
+/// POST /api/colis-prive/v3/complete-flow - Flujo completo v3.3.0.9 (4 pasos)
+/// Implementa exactamente el flujo de la app oficial basado en reverse engineering
+pub async fn execute_complete_flow_v3(
+    State(_state): State<AppState>,
+    Json(request): Json<CompleteFlowRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    use tracing::{info, error};
+    
+    info!(
+        username = %request.username,
+        societe = %request.societe,
+        date = %request.date,
+        "🚀 Iniciando flujo completo v3.3.0.9 (4 pasos - RESUELVE DEFINITIVAMENTE EL 401)"
+    );
+
+    match ColisPriveCompleteFlowService::new() {
+        Ok(service) => {
+            match service.execute_complete_flow(
+                request.username,
+                request.password,
+                request.societe,
+                request.date,
+                request.device_info,
+            ).await {
+                Ok(flow_response) => {
+                    if flow_response.success {
+                        info!(
+                            total_duration = %flow_response.timing.total_duration_ms,
+                            has_tournee_data = flow_response.tournee_data.is_some(),
+                            "✅ Flujo completo v3.3.0.9 ejecutado exitosamente"
+                        );
+
+                        let success_response = json!({
+                            "success": true,
+                            "message": "Flujo completo v3.3.0.9 ejecutado exitosamente - 401 RESUELTO DEFINITIVAMENTE",
+                            "version": "3.3.0.9",
+                            "flow_response": flow_response,
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+
+                        Ok(Json(success_response))
+                    } else {
+                        error!("Flujo v3.3.0.9 falló: {}", flow_response.message);
+                        let error_response = json!({
+                            "success": false,
+                            "version": "3.3.0.9",
+                            "error": {
+                                "message": flow_response.message,
+                                "code": "FLOW_V3_FAILED",
+                                "flow_state": flow_response.flow_state
+                            },
+                            "timing": flow_response.timing,
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+                        Ok(Json(error_response))
+                    }
+                }
+                Err(e) => {
+                    error!("Error ejecutando flujo v3.3.0.9: {}", e);
+                    let error_response = json!({
+                        "success": false,
+                        "version": "3.3.0.9",
+                        "error": {
+                            "message": format!("Error ejecutando flujo v3.3.0.9: {}", e),
+                            "code": "FLOW_V3_EXECUTION_ERROR"
+                        },
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    Ok(Json(error_response))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Error inicializando ColisPriveCompleteFlowService: {}", e);
+            let error_response = json!({
+                "success": false,
+                "version": "3.3.0.9",
+                "error": {
+                    "message": format!("Error interno del servidor: {}", e),
+                    "code": "SERVICE_V3_INIT_FAILED"
+                },
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            Ok(Json(error_response))
+        }
+    }
+}
+
+/// POST /api/colis-prive/v3/reconnect - Reconexión rápida con tokens existentes  
+pub async fn reconnect_with_tokens_v3(
+    State(_state): State<AppState>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    use tracing::{info, error};
+    
+    // Extraer datos del request
+    let sso_hopps = request.get("sso_hopps")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let matricule = request.get("matricule")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let date = request.get("date")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    if sso_hopps.is_empty() || matricule.is_empty() || date.is_empty() {
+        let error_response = json!({
+            "success": false,
+            "version": "3.3.0.9", 
+            "error": {
+                "message": "Faltan parámetros requeridos: sso_hopps, matricule, date",
+                "code": "MISSING_PARAMETERS"
+            },
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        return Ok(Json(error_response));
+    }
+    
+    info!(
+        matricule = %matricule,
+        date = %date,
+        sso_hopps_preview = %&sso_hopps[..sso_hopps.len().min(20)],
+        "🔄 Reconexión rápida v3.3.0.9 con tokens existentes"
+    );
+
+    match ColisPriveCompleteFlowService::new() {
+        Ok(service) => {
+            match service.reconnect_with_existing_tokens(
+                sso_hopps,
+                matricule,
+                date,
+            ).await {
+                Ok(reconnect_response) => {
+                    if reconnect_response.success {
+                        info!(
+                            total_duration = %reconnect_response.timing.total_duration_ms,
+                            "✅ Reconexión v3.3.0.9 exitosa"
+                        );
+
+                        let success_response = json!({
+                            "success": true,
+                            "message": "Reconexión v3.3.0.9 exitosa - tokens válidos",
+                            "version": "3.3.0.9",
+                            "reconnect_response": reconnect_response,
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+
+                        Ok(Json(success_response))
+                    } else {
+                        error!("Reconexión v3.3.0.9 falló: {}", reconnect_response.message);
+                        let error_response = json!({
+                            "success": false,
+                            "version": "3.3.0.9",
+                            "error": {
+                                "message": reconnect_response.message,
+                                "code": "RECONNECT_V3_FAILED",
+                                "suggestion": "Ejecutar flujo completo nuevamente"
+                            },
+                            "timing": reconnect_response.timing,
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+                        Ok(Json(error_response))
+                    }
+                }
+                Err(e) => {
+                    error!("Error en reconexión v3.3.0.9: {}", e);
+                    let error_response = json!({
+                        "success": false,
+                        "version": "3.3.0.9",
+                        "error": {
+                            "message": format!("Error en reconexión v3.3.0.9: {}", e),
+                            "code": "RECONNECT_V3_EXECUTION_ERROR",
+                            "suggestion": "Ejecutar flujo completo nuevamente"
+                        },
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    Ok(Json(error_response))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Error inicializando ColisPriveCompleteFlowService: {}", e);
+            let error_response = json!({
+                "success": false,
+                "version": "3.3.0.9",
+                "error": {
+                    "message": format!("Error interno del servidor: {}", e),
+                    "code": "SERVICE_V3_INIT_FAILED"
                 },
                 "timestamp": chrono::Utc::now().to_rfc3339()
             });

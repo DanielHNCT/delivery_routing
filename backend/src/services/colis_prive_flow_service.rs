@@ -6,7 +6,7 @@ use crate::external_models::{
     VersionCheckRealResponse, LogMobiliteRequest, LogMobiliteResponse,
     ColisPriveOfficialLoginRequest, ColisPriveCommun
 };
-use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client};
+use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client, convert_device_info_to_v3};
 use reqwest::Client;
 use uuid::Uuid;
 use chrono::{Utc, DateTime};
@@ -291,7 +291,8 @@ impl ColisPriveFlowService {
         let url = format!("{}/api/auth/login/Membership", self.auth_base_url);
 
         // Crear audit data usando device info real
-        let audit_data = create_audit_data(device_info);
+        let device_v3 = convert_device_info_to_v3(device_info);
+        let audit_data = create_audit_data(&device_v3);
 
         // Login request - EXACTO como la app oficial
         let login_req = ColisPriveOfficialLoginRequest {

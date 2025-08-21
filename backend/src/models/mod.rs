@@ -10,6 +10,7 @@ pub mod vehicle;
 pub mod tournee;
 pub mod package;
 pub mod analytics;
+pub mod colis_prive_v3_models;
 
 // Re-export specific types to avoid conflicts
 pub use auth::{LoginRequest};

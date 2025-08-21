@@ -94,6 +94,9 @@ async fn main() -> Result<()> {
         // NUEVOS ENDPOINTS PARA FLUJO COMPLETO (RESUELVE EL 401)
         .route("/api/colis-prive/complete-auth-flow", post(api::colis_prive::complete_authentication_flow))
         .route("/api/colis-prive/reconnect", post(api::colis_prive::handle_reconnection))
+        // NUEVOS ENDPOINTS v3.3.0.9 - FLUJO EXACTO DE LA APP OFICIAL
+        .route("/api/colis-prive/v3/complete-flow", post(api::colis_prive::execute_complete_flow_v3))
+        .route("/api/colis-prive/v3/reconnect", post(api::colis_prive::reconnect_with_tokens_v3))
         .route("/api/migration/status", get(get_migration_status))
         .route("/api/migration/strategy", post(change_migration_strategy))
         .route("/api/migration/metrics", get(get_migration_metrics))

@@ -1,7 +1,9 @@
 use reqwest::header::HeaderMap;
 use uuid::Uuid;
+use crate::models::colis_prive_v3_models::{DeviceInfo as DeviceInfoV3, AppInfo};
 use crate::external_models::DeviceInfo;
 use tracing::{debug, info, warn, error};
+use anyhow::Result;
 
 /// Generar headers exactos de la app oficial de Colis Privé usando device info dinámico
 pub fn get_colis_headers(
@@ -174,8 +176,25 @@ pub fn verify_device_info_consistency(
     }
 }
 
+/// Convertir DeviceInfo v1 a v3
+pub fn convert_device_info_to_v3(old_device: &DeviceInfo) -> DeviceInfoV3 {
+    DeviceInfoV3 {
+        imei: old_device.imei.clone(),
+        android_id: old_device.install_id.clone(),
+        android_version: old_device.android_version.clone(),
+        brand: "Sony".to_string(), // Default desde APK
+        device: old_device.model.clone(),
+        hardware: "qcom".to_string(), // Default desde APK
+        install_id: old_device.install_id.clone(),
+        manufacturer: "Sony".to_string(), // Default desde APK
+        model: old_device.model.clone(),
+        product: old_device.model.clone(),
+        serial_number: old_device.serial_number.clone(),
+    }
+}
+
 /// Crear audit data usando device info real - FORMATO EXACTO de la app oficial
-pub fn create_audit_data(device_info: &DeviceInfo) -> serde_json::Value {
+pub fn create_audit_data(device_info: &DeviceInfoV3) -> serde_json::Value {
     let audit_data = serde_json::json!({
         "appName": "CP DISTRI V2",
         "cle1": "",
@@ -196,6 +215,50 @@ pub fn create_audit_data(device_info: &DeviceInfo) -> serde_json::Value {
     );
     
     audit_data
+}
+
+/// Generar headers para API v3.3.0.9 con estructuras nuevas
+pub fn get_v3_headers(
+    device_info: &DeviceInfoV3,
+    app_info: &AppInfo,
+    activity_id: Uuid,
+    sso_hopps: Option<String>,
+) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    
+    // CORE HEADERS exactos de la versión 3.3.0.9
+    headers.insert("Accept-Charset", "UTF-8".parse()?);
+    headers.insert("Content-Type", "application/json; charset=UTF-8".parse()?);
+    headers.insert("Connection", "Keep-Alive".parse()?);
+    headers.insert("Accept-Encoding", "gzip".parse()?);
+    headers.insert("User-Agent", "okhttp/3.4.1".parse()?);
+    
+    // APP IDENTIFICATION v3.3.0.9
+    headers.insert("ActivityId", activity_id.to_string().parse()?);
+    headers.insert("AppName", "CP DISTRI V2".parse()?);
+    headers.insert("AppIdentifier", app_info.app_identifier.parse()?);
+    headers.insert("Device", device_info.model.parse()?);
+    headers.insert("VersionOS", device_info.android_version.parse()?);
+    headers.insert("VersionApplication", app_info.version_name.parse()?);
+    headers.insert("VersionCode", app_info.version_code.parse()?);
+    headers.insert("Societe", app_info.societe.parse()?);
+    headers.insert("Domaine", "Membership".parse()?);
+    
+    // TOKEN (si está disponible)
+    let has_token = sso_hopps.is_some();
+    if let Some(token) = sso_hopps {
+        headers.insert("SsoHopps", token.parse()?);
+    }
+    
+    info!(
+        activity_id = %activity_id,
+        device_model = %device_info.model,
+        version = %app_info.version_name,
+        has_token = has_token,
+        "Headers v3.3.0.9 generados"
+    );
+    
+    Ok(headers)
 }
 
 /// Crear cliente HTTP con SSL bypass para Colis Privé

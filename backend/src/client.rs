@@ -10,7 +10,7 @@ use serde_json::json;
 use std::time::Duration;
 use uuid::Uuid;
 use tracing::{info, warn, error, debug, instrument};
-use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client};
+use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client, convert_device_info_to_v3};
 
 pub struct ColisPriveClient {
     pub client: Client,
@@ -59,7 +59,8 @@ impl ColisPriveClient {
         let url = format!("{}/api/auth/login/Membership", self.auth_base_url);
         
         // Crear audit data usando device info real
-        let audit_data = create_audit_data(&self.device_info);
+        let device_v3 = convert_device_info_to_v3(&self.device_info);
+        let audit_data = create_audit_data(&device_v3);
         
         // CORREGIDO: Usar estructura EXACTA de la app oficial
         let login_req = ColisPriveOfficialLoginRequest {
