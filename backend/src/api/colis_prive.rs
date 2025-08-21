@@ -772,13 +772,20 @@ pub async fn execute_complete_flow_v3(
 
     match ColisPriveCompleteFlowService::new() {
         Ok(service) => {
+            // 🆕 NUEVO: Respetar api_choice de la app, con fallback a "mobile" para v3
+            let api_choice = request.api_choice.as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "mobile".to_string());
+            
+            info!("🎯 API Choice detectado: {} (endpoint v3)", api_choice);
+            
             match service.execute_complete_flow(
                 request.username,
                 request.password,
                 request.societe,
                 request.date,
                 request.device_info,
-                Some("mobile".to_string()), // 🆕 NUEVO: Para v3 siempre usar API Mobile
+                Some(api_choice), // 🆕 NUEVO: Usar api_choice de la app
             ).await {
                 Ok(flow_response) => {
                     if flow_response.success {
