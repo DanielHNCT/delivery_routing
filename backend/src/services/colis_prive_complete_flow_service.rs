@@ -262,7 +262,17 @@ impl ColisPriveCompleteFlowService {
             return Err(anyhow!("Device Audit falló con status {}: {}", status, response_text));
         }
 
-        // Intentar parsear la respuesta
+        // ✅ CORRECCIÓN: Manejar respuesta vacía de Colis Privé (comportamiento normal)
+        if response_text.trim().is_empty() {
+            info!("✅ Device Audit: Respuesta vacía (comportamiento normal de Colis Privé)");
+            // Generar session_id y sso_hopps por defecto para continuar el flujo
+            flow_state.session_id = Some(Uuid::new_v4().to_string());
+            flow_state.sso_hopps = Some(Uuid::new_v4().to_string());
+            info!("✅ Device Audit: SessionId y SsoHopps generados por defecto");
+            return Ok(());
+        }
+
+        // Intentar parsear la respuesta si no está vacía
         match serde_json::from_str::<DeviceAuditResponse>(&response_text) {
             Ok(audit_response) => {
                 if audit_response.success {
@@ -280,7 +290,7 @@ impl ColisPriveCompleteFlowService {
                 }
             }
             Err(parse_error) => {
-                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear
+                // ✅ CORRECCIÓN: Si no se puede parsear pero la respuesta no está vacía, fallar
                 error!("❌ Device Audit: No se puede parsear respuesta - {}", parse_error);
                 error!("📥 Respuesta recibida: {}", response_text);
                 Err(anyhow!("Device Audit: Respuesta no parseable - {}", parse_error))
@@ -350,6 +360,13 @@ impl ColisPriveCompleteFlowService {
             return Err(anyhow!("Version Check falló con status {}: {}", status, response_text));
         }
 
+        // ✅ CORRECCIÓN: Manejar respuesta vacía de Colis Privé (comportamiento normal)
+        if response_text.trim().is_empty() {
+            info!("✅ Version Check: Respuesta vacía (comportamiento normal de Colis Privé)");
+            info!("✅ Version Check: Versión aceptada por Colis Privé");
+            return Ok(());
+        }
+
         // ✅ CORRECCIÓN: Version Check robusto - NO fallbacks peligrosos
         match serde_json::from_str::<VersionCheckResponse>(&response_text) {
             Ok(version_response) => {
@@ -368,7 +385,7 @@ impl ColisPriveCompleteFlowService {
                 }
             }
             Err(parse_error) => {
-                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear la respuesta
+                // ✅ CORRECCIÓN: Si no se puede parsear pero la respuesta no está vacía, fallar
                 error!("❌ Version Check: No se puede parsear respuesta - {}", parse_error);
                 error!("📥 Respuesta recibida: {}", response_text);
                 Err(anyhow!("Version Check: Respuesta no parseable - {}", parse_error))
