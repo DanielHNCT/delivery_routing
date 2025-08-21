@@ -2,7 +2,7 @@ use anyhow::Result;
 use reqwest::Client;
 use reqwest::header::HeaderValue;
 use serde::{Serialize, Deserialize};
-use tracing::{info, error, debug};
+use tracing::{info, error, debug, warn};
 use crate::models::colis_prive_web_models::*;
 use crate::utils::headers::get_web_headers;
 
@@ -264,9 +264,27 @@ impl ColisPriveWebService {
             return Err(anyhow::anyhow!("Letter falló con status {}: {}", status, response_text));
         }
 
+        // Verificar si la respuesta está en base64 y decodificarla si es necesario
+        let decoded_data = if response_text.starts_with("eyJ") || response_text.contains("==") {
+            // Parece ser base64, intentar decodificar
+            match crate::utils::encoding::decode_base64(&response_text) {
+                Ok(decoded) => {
+                    info!("✅ Letra de voz decodificada de base64 exitosamente");
+                    decoded
+                }
+                Err(e) => {
+                    warn!("⚠️ Error decodificando base64, usando respuesta original: {}", e);
+                    response_text
+                }
+            }
+        } else {
+            // No es base64, usar respuesta original
+            response_text
+        };
+
         let letter_response = WebLetterResponse {
             success: true,
-            data: Some(response_text), // Contenido real de la letra
+            data: Some(decoded_data), // Contenido decodificado si era base64
             message: Some("Letra de voz obtenida exitosamente".to_string()),
         };
 
