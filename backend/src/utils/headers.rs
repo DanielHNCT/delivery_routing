@@ -266,14 +266,12 @@ pub fn get_v3_headers(
 pub fn get_web_headers() -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
 
-    // HEADERS EXACTOS DEL TRÁFICO CAPTURADO
+    // HEADERS EXACTOS DEL TRÁFICO CAPTURADO - SOLO LOS QUE ENVÍA CURL
     headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
     headers.insert("Accept-Language", "fr-FR,fr;q=0.5".parse().unwrap());
     headers.insert("Cache-Control", "no-cache".parse().unwrap());
-    headers.insert("Connection", "keep-alive".parse().unwrap());
     headers.insert("Content-Type", "application/json".parse().unwrap());
     headers.insert("Origin", "https://gestiontournee.colisprive.com".parse().unwrap());
-    headers.insert("Pragma", "no-cache".parse().unwrap());
     headers.insert("Referer", "https://gestiontournee.colisprive.com/".parse().unwrap());
     headers.insert("Sec-GPC", "1".parse().unwrap());
     headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36".parse().unwrap());
