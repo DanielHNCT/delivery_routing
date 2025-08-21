@@ -22,10 +22,19 @@ pub struct WebLoginCommun {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebLoginResponse {
-    pub success: bool,
-    pub message: Option<String>,
-    pub sso_hopps: Option<String>,
-    pub session_id: Option<String>,
+    pub isAuthentif: bool,                    // 🆕 NUEVO: Campo real de Colis Privé
+    pub identity: Option<String>,             // 🆕 NUEVO: Identidad del usuario
+    pub matricule: Option<String>,            // 🆕 NUEVO: Matrícula
+    pub tokens: Option<WebLoginTokens>,      // 🆕 NUEVO: Tokens anidados
+    pub success: Option<bool>,                // 🆕 NUEVO: Campo opcional para compatibilidad
+    pub message: Option<String>,              // 🆕 NUEVO: Mensaje opcional
+    pub sso_hopps: Option<String>,           // 🆕 NUEVO: Campo directo (fallback)
+    pub session_id: Option<String>,           // 🆕 NUEVO: Session ID opcional
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebLoginTokens {
+    pub SsoHopps: Option<String>,            // 🆕 NUEVO: Token SsoHopps real
 }
 
 // ============================================================================

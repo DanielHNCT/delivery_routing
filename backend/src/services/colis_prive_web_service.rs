@@ -86,16 +86,28 @@ impl ColisPriveWebService {
             return Err(anyhow::anyhow!("Login falló con status {}: {}", status, response_text));
         }
 
-        match serde_json::from_str::<WebLoginResponse>(&response_text) {
-            Ok(login_response) => {
-                info!("✅ Login exitoso");
-                Ok(login_response)
-            }
-            Err(e) => {
-                error!("❌ Error parseando respuesta de login: {}", e);
-                Err(anyhow::anyhow!("Error parseando respuesta: {}", e))
-            }
-        }
+                            match serde_json::from_str::<WebLoginResponse>(&response_text) {
+                        Ok(login_response) => {
+                            info!("✅ Login exitoso - isAuthentif: {}", login_response.isAuthentif);
+                            
+                            // 🆕 NUEVO: Extraer SsoHopps del lugar correcto
+                            let sso_hopps = if let Some(tokens) = &login_response.tokens {
+                                tokens.SsoHopps.clone()
+                            } else {
+                                login_response.sso_hopps.clone()
+                            };
+                            
+                            // 🆕 NUEVO: Crear respuesta con token extraído
+                            let mut response = login_response;
+                            response.sso_hopps = sso_hopps;
+                            
+                            Ok(response)
+                        }
+                        Err(e) => {
+                            error!("❌ Error parseando respuesta de login: {}", e);
+                            Err(anyhow::anyhow!("Error parseando respuesta: {}", e))
+                        }
+                    }
     }
 
     /// 🌐 PASO 2: Acceso al sistema de pilotaje
