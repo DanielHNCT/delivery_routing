@@ -73,7 +73,8 @@ impl ColisPriveCompleteFlowService {
         };
 
         // ✅ CORRECCIÓN: Construir matricule completo al principio
-        let matricule = format!("{}_{}", societe, username);
+        // El username ya viene con el formato SOCIETE_USERNAME desde Android
+        let matricule = username.clone(); // Usar username directamente sin duplicar societe
         
         // 🆕 NUEVO: Convertir DeviceInfo
         let v3_device_info = self.convert_device_info(&device_info);
@@ -616,6 +617,7 @@ impl ColisPriveCompleteFlowService {
             Ok(web_service) => {
                 info!("🌐 Conectando a API Web real de Colis Privé...");
                 
+                // ✅ CORREGIDO: Usar username directamente, no matricule duplicado
                 match web_service.execute_web_api_flow_complete(&username, &password, &societe, &date).await {
                     Ok(web_response) => {
                         timing.total_duration_ms = web_start.elapsed().as_millis() as u64;
@@ -625,7 +627,7 @@ impl ColisPriveCompleteFlowService {
                         let auth_data = AuthData {
                             sso_hopps: web_response.sso_hopps.unwrap_or_else(|| "WEB_TOKEN".to_string()),
                             auth_token: Some("WEB_AUTH_TOKEN".to_string()),
-                            matricule: matricule.clone(),
+                            matricule: username.clone(), // ✅ CORREGIDO: Usar username, no matricule duplicado
                             session_id: web_response.session_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
                             user_info: None,
                         };
