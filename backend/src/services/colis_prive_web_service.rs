@@ -180,6 +180,16 @@ impl ColisPriveWebService {
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar tournée: {:?}", headers);
         debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
+        
+        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente
+        if let Some(header_value) = headers.get("SsoHopps") {
+            debug!("✅ Header SsoHopps encontrado: {}", header_value.to_str().unwrap_or("ERROR"));
+        } else {
+            error!("❌ Header SsoHopps NO encontrado en headers");
+        }
+        
+        // 🆕 NUEVO: Log de todos los headers que se van a enviar
+        debug!("📤 Headers finales a enviar: {:?}", headers);
 
         let response = self.client
             .post(&url)
@@ -268,6 +278,16 @@ impl ColisPriveWebService {
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar lettre: {:?}", headers);
         debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
+        
+        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente
+        if let Some(header_value) = headers.get("SsoHopps") {
+            debug!("✅ Header SsoHopps encontrado: {}", header_value.to_str().unwrap_or("ERROR"));
+        } else {
+            error!("❌ Header SsoHopps NO encontrado en headers");
+        }
+        
+        // 🆕 NUEVO: Log de todos los headers que se van a enviar
+        debug!("📤 Headers finales a enviar: {:?}", headers);
 
         let response = self.client
             .post(&url)
