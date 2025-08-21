@@ -39,8 +39,8 @@ object EnvironmentConfig {
         return if (android.os.Build.MODEL.contains("D5503") || 
                    android.os.Build.MODEL.contains("Sony") ||
                    android.os.Build.MANUFACTURER.contains("Sony")) {
-            // Es tu Sony Xperia Z1 - usar IP real del nuevo backend
-            "http://192.168.1.100:3000"  // 🆕 NUEVO BACKEND CON FLUJO COMPLETO
+            // Es tu Sony Xperia Z1 - usar IP real del backend
+            "http://192.168.1.9:3000"  // ✅ BACKEND REAL EN 192.168.1.9
         } else if (android.os.Build.FINGERPRINT.contains("generic") || 
                    android.os.Build.FINGERPRINT.contains("unknown") ||
                    android.os.Build.MODEL.contains("google_sdk") ||
@@ -50,7 +50,7 @@ object EnvironmentConfig {
             "http://10.0.2.2:3000"
         } else {
             // Otros dispositivos físicos
-            "http://192.168.1.100:3000"  // 🆕 NUEVO BACKEND CON FLUJO COMPLETO
+            "http://192.168.1.9:3000"  // ✅ BACKEND REAL EN 192.168.1.9
         }
     }
     

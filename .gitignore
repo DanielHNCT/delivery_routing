@@ -69,3 +69,40 @@ logs/
 **/debug/
 **/release/
 **/incremental/
+
+# Android specific
+android/**/.gradle/
+android/**/build/
+android/**/local.properties
+android/**/.idea/
+android/**/*.iml
+android/**/captures/
+android/**/.externalNativeBuild/
+android/**/.cxx/
+android/**/app/release/
+android/**/app/debug/
+android/**/app/build/
+android/**/app/*.apk
+android/**/app/*.aab
+
+# Reverse engineering artifacts (muy pesados)
+android/**/colis_prive_decompiled/
+android/**/colis_prive_apktool/
+android/**/*.apk
+
+# Gradle specific
+android/**/.gradle/
+android/**/gradle-app.setting
+android/**/!gradle-wrapper.jar
+android/**/gradlew
+android/**/gradlew.bat
+
+# Android Studio
+android/**/.idea/
+android/**/*.iml
+android/**/local.properties
+android/**/.gradle/
+android/**/build/
+android/**/captures/
+android/**/.externalNativeBuild/
+android/**/.cxx/

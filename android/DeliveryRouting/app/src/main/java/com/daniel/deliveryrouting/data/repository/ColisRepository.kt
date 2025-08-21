@@ -73,27 +73,23 @@ class ColisRepository(private val context: Context) {
         /**
          * 🆔 EXTRAER MATRÍCULA CORRECTA PARA COLIS PRIVÉ
          * 
-         * Colis Privé necesita: "PCP0010699_A187518" (eliminar solo el primer PCP0010699_)
-         * Ejemplo: "PCP0010699_PCP0010699_A187518" -> "PCP0010699_A187518"
+         * Colis Privé necesita: "INTI_A187518" (sin duplicación)
+         * El username ya viene como "INTI_A187518" desde LoginScreen
          */
-        private fun extractMatricule(fullMatricule: String): String {
-            // ✅ Eliminar solo el primer PCP0010699_ si existe
-            return if (fullMatricule.startsWith("PCP0010699_PCP0010699_")) {
-                fullMatricule.substring("PCP0010699_".length)
-            } else {
-                fullMatricule
-            }
+        private fun extractMatricule(username: String): String {
+            // ✅ Usar directamente el username que ya tiene el formato correcto
+            return username
         }
         
         /**
          * 👤 EXTRAER USERNAME CORRECTO PARA COLIS PRIVÉ
          * 
          * Username debe ser solo la parte final después del último "_"
-         * Ejemplo: "PCP0010699_A187518" -> "A187518"
+         * Ejemplo: "INTI_A187518" -> "A187518"
          */
-        private fun extractUsername(fullMatricule: String): String {
+        private fun extractUsername(username: String): String {
             // ✅ Extraer solo la parte final después del último "_"
-            return fullMatricule.split("_").lastOrNull() ?: fullMatricule
+            return username.split("_").lastOrNull() ?: username
         }
     }
     
@@ -120,14 +116,13 @@ class ColisRepository(private val context: Context) {
             val deviceInfo = deviceInfoManager.getDeviceInfo()
             deviceInfoManager.logDeviceInfo()
             
-            // ✅ CORREGIDO: Extraer matrícula y username correctos para Colis Privé
+            // ✅ CORREGIDO: Usar username directamente sin duplicar societe
             val currentDate = getCurrentDate()
-            val fullMatricule = "${societe}_${username}"
-            val matricule = extractMatricule(fullMatricule)  // ✅ "PCP0010699_A187518"
-            val usernameCorrected = extractUsername(matricule) // ✅ "A187518"
+            val matricule = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
+            val usernameCorrected = extractUsername(username) // ✅ "A187518"
             
-            Log.d(TAG, "🆔 Matrícula completa: $fullMatricule")
-            Log.d(TAG, "🆔 Matrícula extraída: $matricule")
+            Log.d(TAG, "🆔 Username recibido: $username")
+            Log.d(TAG, "🆔 Matrícula para Colis Privé: $matricule")
             Log.d(TAG, "🆔 Username corregido: $usernameCorrected")
             
             // 🆕 NUEVO: Usar flujo completo de autenticación
@@ -282,12 +277,12 @@ class ColisRepository(private val context: Context) {
                 // Obtener device info
                 val deviceInfo = deviceInfoManager.getDeviceInfo()
                 
-                // ✅ CORREGIDO: Usar matrícula y username correctos para Colis Privé
-                val matriculeCorrected = extractMatricule(matricule)  // ✅ "PCP0010699_A187518"
-                val usernameCorrected = extractUsername(matriculeCorrected) // ✅ "A187518"
+                // ✅ CORREGIDO: Usar username directamente sin duplicar societe
+                val matriculeCorrected = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
+                val usernameCorrected = extractUsername(username) // ✅ "A187518"
                 
-                Log.d(TAG, "🆔 Matrícula original: $matricule")
-                Log.d(TAG, "🆔 Matrícula corregida: $matriculeCorrected")
+                Log.d(TAG, "🆔 Username recibido: $username")
+                Log.d(TAG, "🆔 Matrícula para Colis Privé: $matriculeCorrected")
                 Log.d(TAG, "🆔 Username corregido: $usernameCorrected")
                 
                 // Crear request de tournée
@@ -493,9 +488,8 @@ class ColisRepository(private val context: Context) {
             
             val deviceInfo = deviceInfoManager.getDeviceInfo()
             val currentDate = getCurrentDate()
-            val fullMatricule = "${societe}_${username}"
-            val matricule = extractMatricule(fullMatricule)
-            val usernameCorrected = extractUsername(matricule)
+            val matricule = extractMatricule(username)  // ✅ Usar username directamente
+            val usernameCorrected = extractUsername(username)
             
             val request = ReconnectionRequest(
                 username = usernameCorrected,

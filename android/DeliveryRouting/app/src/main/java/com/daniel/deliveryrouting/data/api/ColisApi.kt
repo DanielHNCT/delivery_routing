@@ -7,8 +7,8 @@ import java.util.*
 
 interface ColisApi {
     
-    // 🆕 NUEVO: FLUJO COMPLETO DE AUTENTICACIÓN (RESUELVE EL 401)
-    @POST("api/colis-prive/complete-auth-flow")
+    // 🆕 NUEVO: FLUJO COMPLETO DE AUTENTICACIÓN v3.3.0.9 (RESUELVE DEFINITIVAMENTE EL 401)
+    @POST("api/colis-prive/v3/complete-flow")
     @Headers(
         "Accept-Charset: UTF-8",
         "Content-Type: application/json; charset=UTF-8",
@@ -29,7 +29,8 @@ interface ColisApi {
     ): Response<AuthResponse>
     
     // 🆕 NUEVO: MANEJO DE RECONEXIÓN (RESUELVE EL 401)
-    @POST("api/colis-prive/reconnect")
+    // 🆕 NUEVO: RECONEXIÓN AUTOMÁTICA v3.3.0.9 (RESUELVE DEFINITIVAMENTE EL 401)
+    @POST("api/colis-prive/v3/reconnect")
     @Headers(
         "Accept-Charset: UTF-8",
         "Content-Type: application/json; charset=UTF-8",
