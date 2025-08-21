@@ -370,18 +370,27 @@ impl ColisPriveCompleteFlowService {
         // ✅ CORRECCIÓN: Version Check robusto - NO fallbacks peligrosos
         match serde_json::from_str::<VersionCheckResponse>(&response_text) {
             Ok(version_response) => {
-                if version_response.success {
-                    if let Some(sso_hopps) = version_response.sso_hopps {
-                        flow_state.sso_hopps = Some(sso_hopps);
-                        info!("✅ Version Check: SsoHopps actualizado");
+                // ✅ REPRODUCCIÓN 100% APK OFICIAL - Interpretar respuesta real de Colis Privé
+                match version_response.Action.as_str() {
+                    "Remove" => {
+                        info!("✅ Version Check: Versión aceptada por Colis Privé (Action: Remove)");
+                        info!("📱 ApplicationVersion_id: {}", version_response.ApplicationVersion_id);
+                        info!("🔒 IsObligatoire: {}", version_response.IsObligatoire);
+                        Ok(())
                     }
-                    info!("✅ Version Check: Versión aceptada por Colis Privé");
-                    Ok(())
-                } else {
-                    // ✅ CORRECCIÓN: Fallar rápido si la versión es rechazada
-                    let error_msg = version_response.message.unwrap_or("Versión rechazada por Colis Privé".to_string());
-                    error!("❌ Version Check: Versión rechazada - {}", error_msg);
-                    Err(anyhow!("Version Check falló: {}", error_msg))
+                    "Update" => {
+                        warn!("⚠️ Version Check: Actualización recomendada por Colis Privé");
+                        info!("✅ Version Check: Versión aceptada por Colis Privé (Action: Update)");
+                        Ok(())
+                    }
+                    "Block" => {
+                        error!("❌ Version Check: Versión bloqueada por Colis Privé");
+                        Err(anyhow!("Version Check: Versión bloqueada por Colis Privé"))
+                    }
+                    _ => {
+                        info!("✅ Version Check: Versión aceptada por Colis Privé (Action: {})", version_response.Action);
+                        Ok(())
+                    }
                 }
             }
             Err(parse_error) => {

@@ -82,11 +82,10 @@ pub struct DeviceAuditResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionCheckResponse {
-    pub success: bool,
-    pub version_valid: bool,
-    pub message: Option<String>,
-    pub sso_hopps: Option<String>,
-    pub config: Option<AppConfig>,
+    // ✅ REPRODUCCIÓN 100% APK OFICIAL - Respuesta real de Colis Privé
+    pub ApplicationVersion_id: u32,         // 0
+    pub IsObligatoire: bool,                // true
+    pub Action: String,                     // "Remove"
 }
 
 #[derive(Debug, Serialize, Deserialize)]
