@@ -284,6 +284,10 @@ pub fn get_web_headers() -> Result<HeaderMap> {
     headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
     headers.insert("sec-ch-ua-platform", "\"macOS\"".parse().unwrap());
 
+    // ✅ CORREGIDO: Agregar headers que faltan del tráfico real
+    headers.insert("Connection", "keep-alive".parse().unwrap());
+    headers.insert("Pragma", "no-cache".parse().unwrap());
+
     debug!("🌐 Headers Web API generados: {:?}", headers);
     Ok(headers)
 }
