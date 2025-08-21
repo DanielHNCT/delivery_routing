@@ -636,7 +636,8 @@ pub async fn complete_authentication_flow(
                 &request.device_info,
                 &request.username,
                 &request.password,
-                &request.societe
+                &request.societe,
+                request.api_choice.as_deref() // 🆕 NUEVO: Pasar api_choice al servicio
             ).await {
                 Ok(flow_result) => {
                     info!(
@@ -702,7 +703,8 @@ pub async fn handle_reconnection(
                 &request.device_info,
                 &request.username,
                 &request.password,
-                &request.societe
+                &request.societe,
+                request.api_choice.as_deref() // 🆕 NUEVO: Pasar api_choice para reconexión
             ).await {
                 Ok(reconnection_result) => {
                     info!(
@@ -776,6 +778,7 @@ pub async fn execute_complete_flow_v3(
                 request.societe,
                 request.date,
                 request.device_info,
+                Some("mobile".to_string()), // 🆕 NUEVO: Para v3 siempre usar API Mobile
             ).await {
                 Ok(flow_response) => {
                     if flow_response.success {

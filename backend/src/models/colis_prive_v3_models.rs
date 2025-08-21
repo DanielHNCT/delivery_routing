@@ -398,7 +398,7 @@ pub struct CompleteFlowRequest {
     pub societe: String,
     pub date: String,
     pub matricule: String,
-    pub device_info: DeviceInfo,
+    pub device_info: crate::external_models::DeviceInfo, // 🆕 NUEVO: Usar ExternalDeviceInfo para compatibilidad
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -420,7 +420,7 @@ pub struct AuthData {
     pub user_info: Option<UserInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlowTiming {
     pub total_duration_ms: u64,
     pub device_audit_ms: Option<u64>,

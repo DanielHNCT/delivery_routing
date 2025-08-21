@@ -90,6 +90,9 @@ android/**/colis_prive_decompiled/
 android/**/colis_prive_apktool/
 android/**/*.apk
 
+# 🆕 NUEVO: Carpeta de análisis del APK (excluir completamente)
+apk_analysis/
+
 # Gradle specific
 android/**/.gradle/
 android/**/gradle-app.setting

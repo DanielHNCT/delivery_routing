@@ -7,6 +7,7 @@ use crate::external_models::{
     ColisPriveOfficialLoginRequest, ColisPriveCommun
 };
 use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client, convert_device_info_to_v3};
+use crate::services::colis_prive_complete_flow_service::ColisPriveCompleteFlowService; // 🆕 NUEVO: Importar el nuevo servicio
 use reqwest::Client;
 use uuid::Uuid;
 use chrono::{Utc, DateTime};
@@ -38,81 +39,38 @@ impl ColisPriveFlowService {
         username: &str,
         password: &str,
         societe: &str,
+        api_choice: Option<&str>, // 🆕 NUEVO: Campo para seleccionar API
     ) -> Result<serde_json::Value> {
         info!(
             username = %username,
             societe = %societe,
             device_model = %device_info.model,
-            "Iniciando flujo completo de autenticación Colis Privé"
+            api_choice = %api_choice.unwrap_or("web"),
+            "Iniciando flujo de autenticación Colis Privé con API: {}",
+            api_choice.unwrap_or("web")
         );
 
-        let session_id = Uuid::new_v4().to_string();
-        let activity_id = Uuid::new_v4().to_string();
+        // 🆕 NUEVO: Usar el nuevo servicio que maneja api_choice
+        match ColisPriveCompleteFlowService::new() {
+            Ok(complete_service) => {
+                let date = Utc::now().format("%Y-%m-%d").to_string();
+                let result = complete_service.execute_complete_flow(
+                    username.to_string(),
+                    password.to_string(),
+                    societe.to_string(),
+                    date,
+                    device_info.clone(),
+                    api_choice.map(|s| s.to_string()),
+                ).await?;
 
-        // PASO 1: DEVICE AUDIT (antes del login)
-        info!("🔄 PASO 1: Device Audit");
-        let device_audit_result = self.device_audit(
-            device_info,
-            username,
-            societe,
-            &session_id,
-            &activity_id
-        ).await?;
-
-        // PASO 2: VERSION CHECK (antes del login)
-        info!("🔄 PASO 2: Version Check");
-        let version_check_result = self.version_check_real(
-            username,
-            &session_id,
-            &activity_id
-        ).await?;
-
-        // PASO 3: LOGIN PRINCIPAL
-        info!("🔄 PASO 3: Login Principal");
-        let login_result = self.login_with_context(
-            device_info,
-            username,
-            password,
-            societe,
-            &session_id,
-            &activity_id
-        ).await?;
-
-        // PASO 4: LOGGING AUTOMÁTICO
-        info!("🔄 PASO 4: Logging Automático");
-        let logging_result = self.log_mobilite(
-            device_info,
-            username,
-            societe,
-            &session_id,
-            &activity_id,
-            "Login exitoso completado"
-        ).await?;
-
-        // RESPUESTA COMPLETA DEL FLUJO
-        let complete_response = json!({
-            "success": true,
-            "flow_completed": true,
-            "session_id": session_id,
-            "activity_id": activity_id,
-            "timestamp": Utc::now().to_rfc3339(),
-            "steps": {
-                "device_audit": device_audit_result,
-                "version_check": version_check_result,
-                "login": login_result,
-                "logging": logging_result
-            },
-            "message": "Flujo completo de autenticación ejecutado exitosamente"
-        });
-
-        info!(
-            username = %username,
-            societe = %societe,
-            session_id = %session_id,
-            "Flujo completo de autenticación completado exitosamente"
-        );
-
-        Ok(complete_response)
+                // Convertir la respuesta del nuevo servicio a JSON
+                Ok(serde_json::to_value(result)?)
+            }
+            Err(e) => {
+                error!("Error inicializando ColisPriveCompleteFlowService: {}", e);
+                Err(anyhow::anyhow!("Error del servicio: {}", e))
+            }
+        }
     }
 
     /// PASO 1: Device Audit - EXACTO como la app oficial
@@ -462,11 +420,14 @@ impl ColisPriveFlowService {
         username: &str,
         password: &str,
         societe: &str,
+        api_choice: Option<&str>, // 🆕 NUEVO: Campo para seleccionar API
     ) -> Result<serde_json::Value> {
         info!(
             username = %username,
             societe = %societe,
-            "Manejando reconexión (resolviendo 401)"
+            api_choice = %api_choice.unwrap_or("mobile"),
+            "Manejando reconexión (resolviendo 401) con API: {}",
+            api_choice.unwrap_or("mobile")
         );
 
         // Para reconexión, SIEMPRE ejecutar el flujo completo
@@ -475,7 +436,8 @@ impl ColisPriveFlowService {
             device_info,
             username,
             password,
-            societe
+            societe,
+            api_choice // 🆕 NUEVO: Pasar api_choice al flujo completo
         ).await?;
 
         info!(

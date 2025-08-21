@@ -573,4 +573,7 @@ pub struct TourneeRequestWithRetry {
     pub token: Option<String>,
     /// Información del dispositivo para headers dinámicos
     pub device_info: DeviceInfo,
+    /// 🆕 NUEVO: Tipo de API a usar ("web" o "mobile")
+    #[serde(rename = "api_choice")]
+    pub api_choice: Option<String>,
 }
