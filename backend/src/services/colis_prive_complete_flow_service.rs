@@ -220,11 +220,19 @@ impl ColisPriveCompleteFlowService {
     ) -> Result<()> {
         let url = format!("{}/WebApi/STORE/API/ANDROID/application/AuditDeviceInstall", self.store_base_url);
         
+        // ✅ REPRODUCCIÓN 100% APK OFICIAL - BeanWSRequestAuditDevice
         let request_body = DeviceAuditRequest {
-            device_info: device_info.clone(),
-            app_info: app_info.clone(),
-            install_id: flow_state.activity_id.to_string(),
-            timestamp: Utc::now().to_rfc3339(),
+            device_disk: "8192".to_string(),              // 8GB aprox (Sony Xperia Z1)
+            device_id_device: device_info.android_id.clone(), // ✅ Android ID real
+            device_ram: "3072".to_string(),               // 3GB aprox (Sony Xperia Z1)
+            id_externe_application: app_info.app_identifier.clone(), // ✅ com.danem.cpdistriv2
+            is_install_ok: true,                          // ✅ Instalación exitosa
+            num_application_version: app_info.version_name.clone(), // ✅ 3.3.0.9
+            device_cpu: "Qualcomm Snapdragon 800".to_string(), // ✅ CPU Sony Xperia Z1
+            device_langue: "es".to_string(),              // ✅ Español
+            device_os: device_info.android_version.clone(), // ✅ "Android 5.1.1 (API 22)"
+            device_version: device_info.model.clone(),    // ✅ "Sony D5503"
+            matricule: flow_state.matricule.clone().unwrap_or("PCP0010699_A187518".to_string()), // ✅ Matricule real
         };
 
         debug!("🔗 Device Audit URL: {}", url);
@@ -292,16 +300,29 @@ impl ColisPriveCompleteFlowService {
         let matricule = flow_state.matricule.as_ref()
             .ok_or_else(|| anyhow!("Matricule no disponible en Version Check"))?;
         
-        // Construir URL con parámetros del endpoint real
+        // ✅ REPRODUCCIÓN 100% APK OFICIAL - Endpoint exacto
+        // APK: api/android/Application/{p_id}/CheckVersionForUser/{p_user}/Version/{p_version1}/{p_version2}/{p_version3}/{p_version4}/{p_IMEI}/{p_ICCID}/{p_MSISDN}/{p_IdTel}
+        
+        // Parsear versión 3.3.0.9 en 4 componentes
+        let version_parts: Vec<&str> = app_info.version_name.split('.').collect();
+        let version1 = version_parts.get(0).unwrap_or(&"3");
+        let version2 = version_parts.get(1).unwrap_or(&"3");
+        let version3 = version_parts.get(2).unwrap_or(&"0");
+        let version4 = version_parts.get(3).unwrap_or(&"9");
+        
         let url = format!(
-            "{}/WebApi/STORE/api/android/Application/{}/CheckVersionForUser/{}/{}/{}/{}/{}",
+            "{}/WebApi/STORE/api/android/Application/{}/CheckVersionForUser/{}/Version/{}/{}/{}/{}/{}/{}/{}/{}",
             self.store_base_url,
-            app_info.app_identifier,
-            matricule, // ✅ CORRECCIÓN: Usar matricule real
-            app_info.version_name,
-            device_info.imei,
-            device_info.android_id.clone(),
-            device_info.serial_number.clone()
+            app_info.app_identifier,                    // p_id: com.danem.cpdistriv2
+            matricule,                                  // p_user: PCP0010699_A187518
+            version1,                                   // p_version1: 3
+            version2,                                   // p_version2: 3
+            version3,                                   // p_version3: 0
+            version4,                                   // p_version4: 9
+            device_info.imei,                           // p_IMEI: 351680067703516
+            "",                                         // p_ICCID: vacío (no disponible)
+            "",                                         // p_MSISDN: vacío (no disponible)
+            device_info.android_id                      // p_IdTel: 95512ed661ae0b66
         );
 
         debug!("🔗 Version Check URL: {}", url);

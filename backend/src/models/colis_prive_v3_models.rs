@@ -10,10 +10,39 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeviceAuditRequest {
-    pub device_info: DeviceInfo,
-    pub app_info: AppInfo,
-    pub install_id: String,
-    pub timestamp: String,
+    // ✅ REPRODUCCIÓN 100% APK OFICIAL - BeanWSRequestAuditDevice
+    #[serde(rename = "deviceDisk")]
+    pub device_disk: String,
+    
+    #[serde(rename = "deviceIdDevice")]
+    pub device_id_device: String,
+    
+    #[serde(rename = "deviceRam")]
+    pub device_ram: String,
+    
+    #[serde(rename = "idExterneApplication")]
+    pub id_externe_application: String,
+    
+    #[serde(rename = "isInstallOK")]
+    pub is_install_ok: bool,
+    
+    #[serde(rename = "numApplicationVersion")]
+    pub num_application_version: String,
+    
+    #[serde(rename = "deviceCPU")]
+    pub device_cpu: String,
+    
+    #[serde(rename = "deviceLangue")]
+    pub device_langue: String,
+    
+    #[serde(rename = "deviceOs")]
+    pub device_os: String,
+    
+    #[serde(rename = "deviceVersion")]
+    pub device_version: String,
+    
+    #[serde(rename = "matricule")]
+    pub matricule: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -433,10 +462,18 @@ impl Default for AppInfo {
 impl Default for DeviceAuditRequest {
     fn default() -> Self {
         Self {
-            device_info: DeviceInfo::default(),
-            app_info: AppInfo::default(),
-            install_id: "dev_install_001".to_string(),  // ✅ HARDCODEADO para desarrollo
-            timestamp: Utc::now().to_rfc3339(),
+            // ✅ REPRODUCCIÓN 100% APK OFICIAL - BeanWSRequestAuditDevice
+            device_disk: "8192".to_string(),              // Aproximación: 8GB
+            device_id_device: "dev_install_001".to_string(), // ✅ HARDCODEADO para desarrollo
+            device_ram: "3072".to_string(),               // Aproximación: 3GB (Sony Xperia Z1)
+            id_externe_application: "com.danem.cpdistriv2".to_string(), // ✅ App ID oficial
+            is_install_ok: true,                          // ✅ Instalación exitosa
+            num_application_version: "3.3.0.9".to_string(), // ✅ Versión oficial
+            device_cpu: "Qualcomm Snapdragon 800".to_string(), // Sony Xperia Z1
+            device_langue: "es".to_string(),              // Español
+            device_os: "Android 5.1.1, API 22".to_string(), // ✅ Sony Xperia Z1 real
+            device_version: "Sony D5503".to_string(),     // ✅ Modelo real
+            matricule: "PCP0010699_A187518".to_string(),  // ✅ Será actualizado en runtime
         }
     }
 }
