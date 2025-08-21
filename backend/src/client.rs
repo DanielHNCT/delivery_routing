@@ -526,7 +526,7 @@ impl ColisPriveClient {
         
         let body = json!({
             "DateDebut": date,
-            "Matricule": format!("{}_{}", societe, username)
+            "Matricule": username // ✅ CORREGIDO: Usar username directamente sin duplicar societe
         });
         
         let url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST";
