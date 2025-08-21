@@ -5,7 +5,6 @@ use serde::{Serialize, Deserialize};
 use tracing::{info, error, debug, warn};
 use crate::models::colis_prive_web_models::*;
 use crate::utils::headers::get_web_headers;
-use http::header::HeaderName;
 
 /// Servicio para la API Web real de Colis Privé
 /// Implementa el flujo completo basado en el tráfico capturado
@@ -177,17 +176,19 @@ impl ColisPriveWebService {
 
         let mut headers = get_web_headers()?;
         
-        // 🆕 CORRECCIÓN: Usar HeaderName::from_static para preservar el case exacto
-        let sso_hopps_header = HeaderName::from_static("SsoHopps");
-        headers.insert(sso_hopps_header, HeaderValue::from_str(sso_hopps)?);
+        // 🆕 CORRECCIÓN: Usar enfoque más seguro para el header SsoHopps
+        headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
         
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar tournée: {:?}", headers);
         debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
         
-        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente
+        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente (ENFOQUE SEGURO)
         if let Some(header_value) = headers.get("SsoHopps") {
-            debug!("✅ Header SsoHopps encontrado: {}", header_value.to_str().unwrap_or("ERROR"));
+            match header_value.to_str() {
+                Ok(value) => debug!("✅ Header SsoHopps encontrado: {}", value),
+                Err(_) => debug!("⚠️ Header SsoHopps encontrado pero no se puede convertir a string"),
+            }
         } else {
             error!("❌ Header SsoHopps NO encontrado en headers");
         }
@@ -278,17 +279,19 @@ impl ColisPriveWebService {
 
         let mut headers = get_web_headers()?;
         
-        // 🆕 CORRECCIÓN: Usar HeaderName::from_static para preservar el case exacto
-        let sso_hopps_header = HeaderName::from_static("SsoHopps");
-        headers.insert(sso_hopps_header, HeaderValue::from_str(sso_hopps)?);
+        // 🆕 CORRECCIÓN: Usar enfoque más seguro para el header SsoHopps
+        headers.insert("SsoHopps", HeaderValue::from_str(sso_hopps)?);
         
         // 🆕 NUEVO: Logging detallado de headers
         debug!("🔍 Headers antes de enviar lettre: {:?}", headers);
         debug!("🔑 Token SsoHopps a enviar: {}", sso_hopps);
         
-        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente
+        // 🆕 NUEVO: Verificar que el header SsoHopps esté presente (ENFOQUE SEGURO)
         if let Some(header_value) = headers.get("SsoHopps") {
-            debug!("✅ Header SsoHopps encontrado: {}", header_value.to_str().unwrap_or("ERROR"));
+            match header_value.to_str() {
+                Ok(value) => debug!("✅ Header SsoHopps encontrado: {}", value),
+                Err(_) => debug!("⚠️ Header SsoHopps encontrado pero no se puede convertir a string"),
+            }
         } else {
             error!("❌ Header SsoHopps NO encontrado en headers");
         }
