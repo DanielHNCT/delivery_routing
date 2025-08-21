@@ -132,6 +132,7 @@ pub struct LoginTokenResponse {
     pub message: Option<String>,
     pub auth_token: Option<String>,
     pub matricule: Option<String>,
+    pub sso_hopps: Option<String>, // ✅ Campo para recibir SsoHopps del login
     pub user_info: Option<UserInfo>,
     pub session_info: Option<SessionInfo>,
 }
