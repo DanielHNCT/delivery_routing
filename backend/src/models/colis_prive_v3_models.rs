@@ -10,13 +10,9 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeviceAuditRequest {
-    #[serde(rename = "DeviceInfo")]
     pub device_info: DeviceInfo,
-    #[serde(rename = "AppInfo")]
     pub app_info: AppInfo,
-    #[serde(rename = "InstallId")]
     pub install_id: String,
-    #[serde(rename = "Timestamp")]
     pub timestamp: String,
 }
 
@@ -37,13 +33,9 @@ pub struct DeviceInfo {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppInfo {
-    #[serde(rename = "AppIdentifier")]
     pub app_identifier: String,
-    #[serde(rename = "VersionName")]
     pub version_name: String,
-    #[serde(rename = "VersionCode")]
     pub version_code: String,
-    #[serde(rename = "Societe")]
     pub societe: String,
 }
 
@@ -51,9 +43,7 @@ pub struct AppInfo {
 pub struct DeviceAuditResponse {
     pub success: bool,
     pub message: Option<String>,
-    #[serde(rename = "SsoHopps")]
     pub sso_hopps: Option<String>,
-    #[serde(rename = "SessionId")]
     pub session_id: Option<String>,
 }
 
@@ -66,9 +56,7 @@ pub struct VersionCheckResponse {
     pub success: bool,
     pub version_valid: bool,
     pub message: Option<String>,
-    #[serde(rename = "SsoHopps")]
     pub sso_hopps: Option<String>,
-    #[serde(rename = "Config")]
     pub config: Option<AppConfig>,
 }
 
@@ -106,7 +94,6 @@ pub struct TimeoutConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginTokenRequest {
-    #[serde(rename = "dureeTokenInHour")]
     pub duree_token_in_hour: u32,
     pub token: String,
 }
@@ -115,13 +102,9 @@ pub struct LoginTokenRequest {
 pub struct LoginTokenResponse {
     pub success: bool,
     pub message: Option<String>,
-    #[serde(rename = "AuthToken")]
     pub auth_token: Option<String>,
-    #[serde(rename = "Matricule")]
     pub matricule: Option<String>,
-    #[serde(rename = "UserInfo")]
     pub user_info: Option<UserInfo>,
-    #[serde(rename = "SessionInfo")]
     pub session_info: Option<SessionInfo>,
 }
 
@@ -149,17 +132,11 @@ pub struct SessionInfo {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogMobiliteRequest {
-    #[serde(rename = "Matricule")]
     pub matricule: String,
-    #[serde(rename = "TypeLog")]
     pub type_log: String,
-    #[serde(rename = "Message")]
     pub message: String,
-    #[serde(rename = "Timestamp")]
     pub timestamp: String,
-    #[serde(rename = "DeviceInfo")]
     pub device_info: DeviceInfo,
-    #[serde(rename = "SessionId")]
     pub session_id: Option<String>,
 }
 
@@ -167,9 +144,7 @@ pub struct LogMobiliteRequest {
 pub struct LogMobiliteResponse {
     pub success: bool,
     pub message: Option<String>,
-    #[serde(rename = "LogId")]
     pub log_id: Option<String>,
-    #[serde(rename = "ServerTimestamp")]
     pub server_timestamp: Option<String>,
 }
 
@@ -179,9 +154,7 @@ pub struct LogMobiliteResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TourneeRequestV3 {
-    #[serde(rename = "DateDebut")]
     pub date_debut: String,
-    #[serde(rename = "Matricule")]
     pub matricule: String,
 }
 
@@ -189,43 +162,28 @@ pub struct TourneeRequestV3 {
 pub struct TourneeResponseV3 {
     pub success: bool,
     pub message: Option<String>,
-    #[serde(rename = "Tournees")]
     pub tournees: Option<Vec<TourneeV3>>,
-    #[serde(rename = "TotalPackages")]
     pub total_packages: Option<u32>,
-    #[serde(rename = "Metadata")]
     pub metadata: Option<TourneeMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TourneeV3 {
-    #[serde(rename = "TourneeId")]
     pub tournee_id: String,
-    #[serde(rename = "DateTournee")]
     pub date_tournee: String,
-    #[serde(rename = "Statut")]
     pub statut: String,
-    #[serde(rename = "Packages")]
     pub packages: Vec<PackageV3>,
-    #[serde(rename = "Statistics")]
     pub statistics: Option<TourneeStats>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PackageV3 {
-    #[serde(rename = "NumColis")]
     pub num_colis: String,
-    #[serde(rename = "Destinataire")]
     pub destinataire: DestinataireV3,
-    #[serde(rename = "Adresse")]
     pub adresse: AdresseV3,
-    #[serde(rename = "Statut")]
     pub statut: String,
-    #[serde(rename = "TypeColis")]
     pub type_colis: String,
-    #[serde(rename = "Instructions")]
     pub instructions: Option<String>,
-    #[serde(rename = "Metadata")]
     pub metadata: Option<PackageMetadata>,
 }
 
