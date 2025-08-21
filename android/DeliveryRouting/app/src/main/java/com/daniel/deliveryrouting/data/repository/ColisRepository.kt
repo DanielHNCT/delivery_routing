@@ -13,6 +13,7 @@ import com.daniel.deliveryrouting.utils.InstallationInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.*
+import java.util.Calendar
 
 /**
  * 🔗 REPOSITORY COMPLETO PARA COLIS PRIVÉ
@@ -94,54 +95,57 @@ class ColisRepository(private val context: Context) {
     }
     
     /**
-     * 🔐 AUTENTICACIÓN PRINCIPAL CON FLUJO COMPLETO (RESUELVE EL 401)
+     * 🔐 AUTENTICACIÓN COMPLETA (API Mobile)
      */
     suspend fun authenticate(
         username: String,
         password: String,
-        societe: String
+        societe: String,
+        date: String,
+        matricule: String,
+        deviceInfo: DeviceInfo
     ): Result<AuthResponse> = withContext(Dispatchers.IO) {
-        
         try {
-            val backendUrl = getBackendUrl()
-            Log.d(TAG, "🚀 === INICIO FLUJO COMPLETO DE AUTENTICACIÓN (RESUELVE EL 401) ===")
+            Log.d(TAG, "🔐 === AUTENTICACIÓN COMPLETA (API MOBILE) ===")
             Log.d(TAG, "Username: $username")
             Log.d(TAG, "Societe: $societe")
-            Log.d(TAG, "Backend: $backendUrl")
-            Log.d(TAG, "📱 Device Model: ${android.os.Build.MODEL}")
-            Log.d(TAG, "📱 Device Manufacturer: ${android.os.Build.MANUFACTURER}")
-            Log.d(TAG, "📱 Device Fingerprint: ${android.os.Build.FINGERPRINT}")
+            Log.d(TAG, "Matricule: $matricule")
+            Log.d(TAG, "Date: $date")
+            Log.d(TAG, "Device: ${deviceInfo.model}")
+            Log.d(TAG, "Android Version: ${deviceInfo.androidVersion}")
             
-            // Obtener device info único
-            val deviceInfo = deviceInfoManager.getDeviceInfo()
-            deviceInfoManager.logDeviceInfo()
+            // Corregir username si es necesario
+            val usernameCorrected = if (username.contains("_")) username else "${societe}_$username"
+            Log.d(TAG, "Username corregido: $usernameCorrected")
             
-            // ✅ CORREGIDO: Usar username directamente sin duplicar societe
-            val currentDate = getCurrentDate()
-            val matricule = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
-            val usernameCorrected = extractUsername(username) // ✅ "A187518"
+            val currentDate = if (date.isBlank()) {
+                val today = java.time.LocalDate.now()
+                today.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+            } else {
+                date
+            }
+            Log.d(TAG, "Fecha final: $currentDate")
             
-            Log.d(TAG, "🆔 Username recibido: $username")
-            Log.d(TAG, "🆔 Matrícula para Colis Privé: $matricule")
-            Log.d(TAG, "🆔 Username corregido: $usernameCorrected")
-            
-            // 🆕 NUEVO: Usar flujo completo de autenticación
             val request = CompleteAuthFlowRequest(
-                username = usernameCorrected,  // ✅ Usar username corregido: "A187518"
+                username = usernameCorrected,
                 password = password,
                 societe = societe,
                 date = currentDate,
-                matricule = matricule,         // ✅ Usar matrícula extraída: "PCP0010699_A187518"
+                matricule = matricule,
                 deviceInfo = deviceInfo,
                 apiChoice = "mobile"           // 🆕 NUEVO: Indicar que es API Mobile
             )
             
-            Log.d(TAG, "📡 Enviando request de flujo completo...")
+            Log.d(TAG, "📋 Request completo: $request")
             
             val activityId = UUID.randomUUID().toString()
             val loginDeviceInfo = deviceInfoManager.getDeviceInfo()
             
+            Log.d(TAG, "🆔 Activity ID generado: $activityId")
+            Log.d(TAG, "📱 Device Info real: ${loginDeviceInfo.model}, ${loginDeviceInfo.androidVersion}")
+            
             // 🆕 NUEVO: Llamar al endpoint de flujo completo
+            Log.d(TAG, "📡 Enviando request al backend...")
             val response = api.completeAuthenticationFlow(
                 request = request,
                 activityId = activityId,
@@ -150,14 +154,18 @@ class ColisRepository(private val context: Context) {
             )
             
             Log.d(TAG, "📡 Response code: ${response.code()}")
+            Log.d(TAG, "📡 Response headers: ${response.headers()}")
             
             when {
                 response.isSuccessful -> {
                     val authData = response.body()!!
                     Log.d(TAG, "✅ Flujo completo exitoso - 401 RESUELTO")
+                    Log.d(TAG, "📊 Auth Data: success=${authData.success}, message=${authData.message}")
                     
                     // Guardar tokens en el manager (si hay)
                     if (authData.flowResult?.success == true) {
+                        Log.d(TAG, "🔑 Guardando tokens en ColisTokenManager...")
+                        
                         // Crear BackendAuthResponse compatible
                         val authenticationData = AuthenticationData(
                             matricule = matricule,
@@ -169,125 +177,263 @@ class ColisRepository(private val context: Context) {
                             success = authData.success,
                             timestamp = authData.timestamp
                         )
+                        
+                        Log.d(TAG, "📋 BackendAuthResponse creado: $backendAuthResponse")
+                        
+                        // 🆕 NUEVO: Log antes de guardar
+                        Log.d(TAG, "💾 === ANTES DE GUARDAR TOKENS ===")
+                        Log.d(TAG, "Token a guardar: ${authData.flowResult?.sessionId?.take(50)}...")
+                        Log.d(TAG, "Matricule: $matricule")
+                        
                         tokenManager.saveTokens(backendAuthResponse)
+                        
+                        // 🆕 NUEVO: Verificar que se guardaron
+                        Log.d(TAG, "🔍 === VERIFICANDO TOKENS GUARDADOS ===")
+                        val savedToken = tokenManager.getValidToken()
+                        val isLoggedIn = tokenManager.isUserLoggedIn()
+                        Log.d(TAG, "Token guardado: ${savedToken != null}")
+                        Log.d(TAG, "Usuario logueado: $isLoggedIn")
+                        
+                        if (savedToken != null) {
+                            Log.d(TAG, "✅ Token guardado exitosamente: ${savedToken.take(50)}...")
+                        } else {
+                            Log.w(TAG, "⚠️ Token NO se guardó correctamente")
+                        }
+                        
+                        // 🆕 NUEVO: Log estado completo
+                        tokenManager.logCurrentState()
+                        
+                    } else {
+                        Log.w(TAG, "⚠️ FlowResult no exitoso: ${authData.flowResult}")
                     }
                     
                     // Retornar success
+                    Log.d(TAG, "✅ === AUTENTICACIÓN COMPLETA EXITOSA ===")
                     Result.success(authData)
                 }
                 response.code() == 401 -> {
-                    Log.e(TAG, "❌ 401 Unauthorized - intentando reconexión...")
-                    // Intentar reconexión automática
-                    val reconnectionResult = handleReconnection(username, password, societe)
-                    reconnectionResult
+                    Log.e(TAG, "❌ 401 Unauthorized en flujo completo")
+                    Log.e(TAG, "📋 Response body: ${response.errorBody()?.string()}")
+                    Result.failure(Exception("Autenticación falló: 401 Unauthorized"))
                 }
                 else -> {
-                    val errorMsg = "Error HTTP: ${response.code()}"
+                    val errorMsg = "Error HTTP en flujo completo: ${response.code()}"
                     Log.e(TAG, "❌ $errorMsg")
+                    Log.e(TAG, "📋 Response body: ${response.errorBody()?.string()}")
                     Result.failure(Exception(errorMsg))
                 }
             }
             
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error en flujo completo: ${e.message}", e)
+            Log.e(TAG, "❌ Error en autenticación completa: ${e.message}", e)
+            Log.e(TAG, "📋 Stack trace completo:", e)
             Result.failure(e)
         }
     }
     
     /**
-     * 🌐 AUTENTICACIÓN WEB (API SIMPLE)
+     * 🌐 AUTENTICACIÓN WEB API
      */
     suspend fun authenticateWeb(
         username: String,
         password: String,
-        societe: String
+        societe: String,
+        date: String,
+        matricule: String,
+        deviceInfo: DeviceInfo
     ): Result<AuthResponse> = withContext(Dispatchers.IO) {
-        
         try {
-            val backendUrl = getBackendUrl()
-            Log.d(TAG, "🌐 === INICIO AUTENTICACIÓN WEB (API SIMPLE) ===")
+            Log.d(TAG, "🌐 === AUTENTICACIÓN WEB API ===")
             Log.d(TAG, "Username: $username")
             Log.d(TAG, "Societe: $societe")
-            Log.d(TAG, "Backend: $backendUrl")
-            Log.d(TAG, "📱 Device Model: ${android.os.Build.MODEL}")
-            Log.d(TAG, "📱 Device Manufacturer: ${android.os.Build.MANUFACTURER}")
+            Log.d(TAG, "Matricule: $matricule")
+            Log.d(TAG, "Date: $date")
+            Log.d(TAG, "Device: ${deviceInfo.model}")
+            Log.d(TAG, "Android Version: ${deviceInfo.androidVersion}")
             
-            // Obtener device info único
-            val deviceInfo = deviceInfoManager.getDeviceInfo()
-            deviceInfoManager.logDeviceInfo()
+            // Corregir username si es necesario
+            Log.d(TAG, "🔧 Corrigiendo username...")
+            val usernameCorrected = try {
+                if (username.contains("_")) username else "${societe}_$username"
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error corrigiendo username: ${e.message}", e)
+                throw e
+            }
+            Log.d(TAG, "✅ Username corregido: $usernameCorrected")
             
-            // ✅ CORREGIDO: Usar username directamente sin duplicar societe
-            val currentDate = getCurrentDate()
-            val matricule = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
-            val usernameCorrected = extractUsername(username) // ✅ "A187518"
+            Log.d(TAG, "📅 Procesando fecha...")
+            val currentDate = try {
+                if (date.isBlank()) {
+                    // ✅ COMPATIBLE CON ANDROID 5.1.1 (API 22)
+                    val calendar = Calendar.getInstance()
+                    val year = calendar.get(Calendar.YEAR)
+                    val month = calendar.get(Calendar.MONTH) + 1 // Calendar.MONTH es 0-based
+                    val day = calendar.get(Calendar.DAY_OF_MONTH)
+                    
+                    // Formato: YYYY-MM-DD
+                    String.format("%04d-%02d-%02d", year, month, day)
+                } else {
+                    date
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error procesando fecha: ${e.message}", e)
+                throw e
+            }
+            Log.d(TAG, "✅ Fecha final: $currentDate")
             
-            Log.d(TAG, "🆔 Username recibido: $username")
-            Log.d(TAG, "🆔 Matrícula para Colis Privé: $matricule")
-            Log.d(TAG, "🆔 Username corregido: $usernameCorrected")
+            Log.d(TAG, "📋 Creando request...")
+            val request = try {
+                CompleteAuthFlowRequest(
+                    username = usernameCorrected,
+                    password = password,
+                    societe = societe,
+                    date = currentDate,
+                    matricule = matricule,
+                    deviceInfo = deviceInfo,
+                    apiChoice = "web"              // 🆕 NUEVO: Indicar que es API Web
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error creando request: ${e.message}", e)
+                throw e
+            }
             
-            // 🆕 NUEVO: Usar autenticación web simple
-            val request = CompleteAuthFlowRequest(
-                username = usernameCorrected,  // ✅ Usar username corregido: "A187518"
-                password = password,
-                societe = societe,
-                date = currentDate,
-                matricule = matricule,         // ✅ Usar matrícula extraída: "PCP0010699_A187518"
-                deviceInfo = deviceInfo,
-                apiChoice = "web"              // 🆕 NUEVO: Indicar que es API Web
-            )
+            Log.d(TAG, "✅ Request completo creado: $request")
             
-            Log.d(TAG, "📡 Enviando request de autenticación web...")
+            Log.d(TAG, "🆔 Generando Activity ID...")
+            val activityId = try {
+                UUID.randomUUID().toString()
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error generando Activity ID: ${e.message}", e)
+                throw e
+            }
+            Log.d(TAG, "✅ Activity ID generado: $activityId")
             
-            val activityId = UUID.randomUUID().toString()
-            val loginDeviceInfo = deviceInfoManager.getDeviceInfo()
+            Log.d(TAG, "📱 Obteniendo device info real...")
+            val loginDeviceInfo = try {
+                deviceInfoManager.getDeviceInfo()
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error obteniendo device info real: ${e.message}", e)
+                throw e
+            }
+            
+            Log.d(TAG, "✅ Device Info real obtenido: ${loginDeviceInfo.model}, ${loginDeviceInfo.androidVersion}")
             
             // 🆕 NUEVO: Llamar al endpoint de autenticación web
-            val response = api.completeAuthenticationFlow(
-                request = request,
-                activityId = activityId,
-                device = loginDeviceInfo.model,  // ✅ Device real del dispositivo
-                versionOS = loginDeviceInfo.androidVersion  // ✅ Version real de Android
-            )
+            Log.d(TAG, "📡 Enviando request web al backend...")
+            val response = try {
+                api.completeAuthenticationFlow(
+                    request = request,
+                    activityId = activityId,
+                    device = loginDeviceInfo.model,  // ✅ Device real del dispositivo
+                    versionOS = loginDeviceInfo.androidVersion  // ✅ Version real de Android
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error en llamada a API: ${e.message}", e)
+                Log.e(TAG, "📋 Stack trace completo:", e)
+                throw e
+            }
             
+            Log.d(TAG, "✅ Response recibido del backend")
             Log.d(TAG, "📡 Response code: ${response.code()}")
+            Log.d(TAG, "📡 Response headers: ${response.headers()}")
             
             when {
                 response.isSuccessful -> {
-                    val authData = response.body()!!
+                    Log.d(TAG, "✅ Response exitoso, procesando body...")
+                    val authData = try {
+                        response.body()!!
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Error obteniendo response body: ${e.message}", e)
+                        throw e
+                    }
+                    
                     Log.d(TAG, "✅ Autenticación web exitosa")
+                    Log.d(TAG, "📊 Auth Data: success=${authData.success}, message=${authData.message}")
                     
                     // Guardar tokens en el manager (si hay)
                     if (authData.flowResult?.success == true) {
-                        // Crear BackendAuthResponse compatible
-                        val authenticationData = AuthenticationData(
-                            matricule = matricule,
-                            message = authData.message,
-                            token = authData.flowResult?.sessionId ?: ""
-                        )
-                        val backendAuthResponse = BackendAuthResponse(
-                            authentication = authenticationData,
-                            success = authData.success,
-                            timestamp = authData.timestamp
-                        )
-                        tokenManager.saveTokens(backendAuthResponse)
+                        Log.d(TAG, "🔑 Guardando tokens web en ColisTokenManager...")
+                        
+                        try {
+                            // Crear BackendAuthResponse compatible
+                            val authenticationData = AuthenticationData(
+                                matricule = matricule,
+                                message = authData.message,
+                                token = authData.flowResult?.sessionId ?: ""
+                            )
+                            val backendAuthResponse = BackendAuthResponse(
+                                authentication = authenticationData,
+                                success = authData.success,
+                                timestamp = authData.timestamp
+                            )
+                            
+                            Log.d(TAG, "📋 BackendAuthResponse web creado: $backendAuthResponse")
+                            
+                            // 🆕 NUEVO: Log antes de guardar
+                            Log.d(TAG, "💾 === ANTES DE GUARDAR TOKENS WEB ===")
+                            Log.d(TAG, "Token a guardar: ${authData.flowResult?.sessionId?.take(50)}...")
+                            Log.d(TAG, "Matricule: $matricule")
+                            
+                            tokenManager.saveTokens(backendAuthResponse)
+                            
+                            // 🆕 NUEVO: Verificar que se guardaron
+                            Log.d(TAG, "🔍 === VERIFICANDO TOKENS WEB GUARDADOS ===")
+                            val savedToken = tokenManager.getValidToken()
+                            val isLoggedIn = tokenManager.isUserLoggedIn()
+                            Log.d(TAG, "Token web guardado: ${savedToken != null}")
+                            Log.d(TAG, "Usuario logueado: $isLoggedIn")
+                            
+                            if (savedToken != null) {
+                                Log.d(TAG, "✅ Token web guardado exitosamente: ${savedToken.take(50)}...")
+                            } else {
+                                Log.w(TAG, "⚠️ Token web NO se guardó correctamente")
+                            }
+                            
+                            // 🆕 NUEVO: Log estado completo
+                            tokenManager.logCurrentState()
+                            
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ Error guardando tokens: ${e.message}", e)
+                            Log.e(TAG, "📋 Stack trace completo:", e)
+                            // No lanzar excepción, continuar con el flujo
+                        }
+                        
+                    } else {
+                        Log.w(TAG, "⚠️ FlowResult web no exitoso: ${authData.flowResult}")
                     }
                     
                     // Retornar success
+                    Log.d(TAG, "✅ === AUTENTICACIÓN WEB EXITOSA ===")
                     Result.success(authData)
                 }
                 response.code() == 401 -> {
                     Log.e(TAG, "❌ 401 Unauthorized en autenticación web")
+                    val errorBody = try {
+                        response.errorBody()?.string()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Error leyendo error body: ${e.message}", e)
+                        "Error body no disponible"
+                    }
+                    Log.e(TAG, "📋 Response body: $errorBody")
                     Result.failure(Exception("Autenticación web falló: 401 Unauthorized"))
                 }
                 else -> {
                     val errorMsg = "Error HTTP en autenticación web: ${response.code()}"
                     Log.e(TAG, "❌ $errorMsg")
+                    val errorBody = try {
+                        response.errorBody()?.string()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Error leyendo error body: ${e.message}", e)
+                        "Error body no disponible"
+                    }
+                    Log.e(TAG, "📋 Response body: $errorBody")
                     Result.failure(Exception(errorMsg))
                 }
             }
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error en autenticación web: ${e.message}", e)
+            Log.e(TAG, "📋 Stack trace completo:", e)
             Result.failure(e)
         }
     }
@@ -305,12 +451,17 @@ class ColisRepository(private val context: Context) {
                 return@withContext Result.failure(Exception("No token available for refresh"))
             }
             
+            Log.d(TAG, "🔑 Token anterior encontrado: ${oldToken.take(50)}...")
+            
             val deviceInfo = deviceInfoManager.getDeviceInfo()
+            Log.d(TAG, "📱 Device Info para refresh: ${deviceInfo.model}, ${deviceInfo.androidVersion}")
+            
             val request = RefreshTokenRequest(
                 token = oldToken,
                 deviceInfo = deviceInfo
             )
             
+            Log.d(TAG, "📋 Refresh request: $request")
             Log.d(TAG, "📡 Enviando request de refresh...")
             
             val refreshDeviceInfo = deviceInfoManager.getDeviceInfo()
@@ -320,23 +471,44 @@ class ColisRepository(private val context: Context) {
                 versionOS = refreshDeviceInfo.androidVersion  // ✅ Version real de Android
             )
             Log.d(TAG, "📡 Refresh response code: ${response.code()}")
+            Log.d(TAG, "📡 Refresh response headers: ${response.headers()}")
             
             if (response.isSuccessful) {
                 val newTokenData = response.body()!!
                 Log.d(TAG, "✅ Token refresh exitoso")
+                Log.d(TAG, "📊 New token data: success=${newTokenData.success}")
                 
                 // Guardar nuevos tokens
+                Log.d(TAG, "🔑 Guardando nuevos tokens después del refresh...")
                 tokenManager.saveTokens(newTokenData)
+                
+                // 🆕 NUEVO: Verificar que se guardaron
+                Log.d(TAG, "🔍 === VERIFICANDO TOKENS REFRESHADOS ===")
+                val savedToken = tokenManager.getValidToken()
+                val isLoggedIn = tokenManager.isUserLoggedIn()
+                Log.d(TAG, "Token refreshado guardado: ${savedToken != null}")
+                Log.d(TAG, "Usuario logueado después del refresh: $isLoggedIn")
+                
+                if (savedToken != null) {
+                    Log.d(TAG, "✅ Token refreshado guardado exitosamente: ${savedToken.take(50)}...")
+                } else {
+                    Log.w(TAG, "⚠️ Token refreshado NO se guardó correctamente")
+                }
+                
+                // 🆕 NUEVO: Log estado completo después del refresh
+                tokenManager.logCurrentState()
                 
                 Result.success(newTokenData)
             } else {
                 val errorMsg = "Refresh failed with code: ${response.code()}"
                 Log.e(TAG, "❌ $errorMsg")
+                Log.e(TAG, "📋 Refresh response body: ${response.errorBody()?.string()}")
                 Result.failure(Exception(errorMsg))
             }
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error en refresh token: ${e.message}", e)
+            Log.e(TAG, "📋 Stack trace completo:", e)
             Result.failure(e)
         }
     }
@@ -375,6 +547,21 @@ class ColisRepository(private val context: Context) {
                 
                 // Obtener device info
                 val deviceInfo = deviceInfoManager.getDeviceInfo()
+                
+                // 🆕 NUEVO: Log antes de generar matricule
+                Log.d(TAG, "🆔 Generando matricule...")
+                val matricule = try {
+                    // ✅ CORREGIDO: Evitar duplicación de societe
+                    if (username.startsWith(societe)) {
+                        username // Ya tiene el formato correcto
+                    } else {
+                        "${societe}_$username"
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Error generando matricule: ${e.message}", e)
+                    throw e
+                }
+                Log.d(TAG, "✅ Matricule generado: $matricule")
                 
                 // ✅ CORREGIDO: Usar username directamente sin duplicar societe
                 val matriculeCorrected = extractMatricule(username)  // ✅ "INTI_A187518" (sin duplicación)
@@ -467,13 +654,31 @@ class ColisRepository(private val context: Context) {
      */
     suspend fun getCurrentState(): ColisRepositoryState = withContext(Dispatchers.IO) {
         try {
-            val isAuthenticated = tokenManager.isUserLoggedIn()
-            val userData = tokenManager.getSavedUserData()
-            val tokenExpiration = tokenManager.getTokenExpirationInfo()
-            val deviceInfo = deviceInfoManager.getDeviceInfo()
-            val installationInfo = deviceInfoManager.getInstallationInfo()
+            Log.d(TAG, "📊 === OBTENIENDO ESTADO ACTUAL DEL REPOSITORY ===")
             
-            ColisRepositoryState(
+            val isAuthenticated = tokenManager.isUserLoggedIn()
+            Log.d(TAG, "🔐 Usuario autenticado: $isAuthenticated")
+            
+            val userData = tokenManager.getSavedUserData()
+            Log.d(TAG, "👥 Datos de usuario: $userData")
+            
+            val tokenExpiration = tokenManager.getTokenExpirationInfo()
+            Log.d(TAG, "⏰ Información de expiración: $tokenExpiration")
+            
+            val deviceInfo = deviceInfoManager.getDeviceInfo()
+            Log.d(TAG, "📱 Device Info: ${deviceInfo.model}, ${deviceInfo.androidVersion}")
+            
+            val installationInfo = deviceInfoManager.getInstallationInfo()
+            Log.d(TAG, "📦 Installation Info: $installationInfo")
+            
+            val lastUpdateTime = System.currentTimeMillis()
+            Log.d(TAG, "🕐 Última actualización: ${java.util.Date(lastUpdateTime)}")
+            
+            // 🆕 NUEVO: Log estado completo del token manager
+            Log.d(TAG, "🔍 === ESTADO COMPLETO DEL TOKEN MANAGER ===")
+            tokenManager.logCurrentState()
+            
+            val state = ColisRepositoryState(
                 isAuthenticated = isAuthenticated,
                 currentUser = userData?.matricule,
                 username = userData?.username,
@@ -481,11 +686,17 @@ class ColisRepository(private val context: Context) {
                 tokenExpiration = tokenExpiration,
                 deviceInfo = deviceInfo,
                 installationInfo = installationInfo,
-                lastUpdateTime = System.currentTimeMillis()
+                lastUpdateTime = lastUpdateTime
             )
+            
+            Log.d(TAG, "📊 Estado del repository creado: $state")
+            Log.d(TAG, "✅ === ESTADO DEL REPOSITORY OBTENIDO EXITOSAMENTE ===")
+            
+            state
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error obteniendo estado del repository: ${e.message}", e)
+            Log.e(TAG, "📋 Stack trace completo:", e)
             ColisRepositoryState()
         }
     }
@@ -516,7 +727,22 @@ class ColisRepository(private val context: Context) {
      * 🔍 VERIFICAR SI USUARIO ESTÁ LOGUEADO
      */
     suspend fun isUserLoggedIn(): Boolean {
-        return tokenManager.isUserLoggedIn()
+        Log.d(TAG, "🔍 === VERIFICANDO SI USUARIO ESTÁ LOGUEADO ===")
+        
+        val isLoggedIn = tokenManager.isUserLoggedIn()
+        Log.d(TAG, "🔐 Resultado de verificación: $isLoggedIn")
+        
+        if (isLoggedIn) {
+            Log.d(TAG, "✅ Usuario está logueado")
+            // 🆕 NUEVO: Log estado detallado si está logueado
+            tokenManager.logCurrentState()
+        } else {
+            Log.w(TAG, "❌ Usuario NO está logueado")
+            // 🆕 NUEVO: Log estado detallado si NO está logueado
+            tokenManager.logCurrentState()
+        }
+        
+        return isLoggedIn
     }
     
     /**
@@ -561,7 +787,10 @@ class ColisRepository(private val context: Context) {
         
         // Si refresh falla, hacer login fresh
         Log.d(TAG, "🔑 Haciendo login fresh...")
-        val loginResult = authenticate(username, password, societe)
+        val deviceInfo = deviceInfoManager.getDeviceInfo()
+        val currentDate = getCurrentDate()
+        val matricule = extractMatricule(username)
+        val loginResult = authenticate(username, password, societe, currentDate, matricule, deviceInfo)
         if (loginResult.isSuccess) {
             val newToken = tokenManager.getValidToken()
             if (newToken != null) {

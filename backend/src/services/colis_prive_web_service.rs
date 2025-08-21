@@ -44,7 +44,7 @@ impl ColisPriveWebService {
         })
     }
 
-    /// 🌐 PASO 1: Login real a la API Web de Colis Privé
+    /// �� PASO 1: Login real con la API Web de Colis Privé
     pub async fn login_web_api(
         &self,
         username: &str,
@@ -56,8 +56,10 @@ impl ColisPriveWebService {
         let url = format!("{}/api/auth/login/Membership", self.base_urls.auth);
         debug!("🔗 Login URL: {}", url);
 
+        // ✅ CORREGIDO: Usar username directamente sin duplicar societe
+        // El username ya viene con el formato SOCIETE_USERNAME desde Android
         let request_body = WebLoginRequest {
-            login: format!("{}_{}", societe, username), // 🆕 CORREGIDO: SOCIETE_USERNAME
+            login: username.to_string(), // Usar username tal como viene
             password: password.to_string(),
             societe: societe.to_string(),
             commun: WebLoginCommun {
@@ -86,28 +88,28 @@ impl ColisPriveWebService {
             return Err(anyhow::anyhow!("Login falló con status {}: {}", status, response_text));
         }
 
-                            match serde_json::from_str::<WebLoginResponse>(&response_text) {
-                        Ok(login_response) => {
-                            info!("✅ Login exitoso - isAuthentif: {}", login_response.isAuthentif);
-                            
-                            // 🆕 NUEVO: Extraer SsoHopps del lugar correcto
-                            let sso_hopps = if let Some(tokens) = &login_response.tokens {
-                                tokens.SsoHopps.clone()
-                            } else {
-                                login_response.sso_hopps.clone()
-                            };
-                            
-                            // 🆕 NUEVO: Crear respuesta con token extraído
-                            let mut response = login_response;
-                            response.sso_hopps = sso_hopps;
-                            
-                            Ok(response)
-                        }
-                        Err(e) => {
-                            error!("❌ Error parseando respuesta de login: {}", e);
-                            Err(anyhow::anyhow!("Error parseando respuesta: {}", e))
-                        }
-                    }
+        match serde_json::from_str::<WebLoginResponse>(&response_text) {
+            Ok(login_response) => {
+                info!("✅ Login exitoso - isAuthentif: {}", login_response.isAuthentif);
+                
+                // 🆕 NUEVO: Extraer SsoHopps del lugar correcto
+                let sso_hopps = if let Some(tokens) = &login_response.tokens {
+                    tokens.SsoHopps.clone()
+                } else {
+                    login_response.sso_hopps.clone()
+                };
+                
+                // 🆕 NUEVO: Crear respuesta con token extraído
+                let mut response = login_response;
+                response.sso_hopps = sso_hopps;
+                
+                Ok(response)
+            }
+            Err(e) => {
+                error!("❌ Error parseando respuesta de login: {}", e);
+                Err(anyhow::anyhow!("Error parseando respuesta: {}", e))
+            }
+        }
     }
 
     /// 🌐 PASO 2: Acceso al sistema de pilotaje
@@ -319,7 +321,9 @@ impl ColisPriveWebService {
         let sso_hopps = login_response.sso_hopps
             .ok_or_else(|| anyhow::anyhow!("No se obtuvo SsoHopps del login"))?;
         
-        let matricule = format!("{}_{}", societe, username);
+        // ✅ CORREGIDO: Usar username directamente sin duplicar societe
+        // El username ya viene con el formato SOCIETE_USERNAME desde Android
+        let matricule = username.to_string();
         
         // PASO 2: Acceso al pilot
         self.access_pilot(&matricule, societe, &sso_hopps).await?;
