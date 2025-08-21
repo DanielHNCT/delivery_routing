@@ -307,3 +307,19 @@ enum class PackageStatusType(val code: String, val label: String, val isComplete
     COMPLETED("COMPLETED", "Completado", true),
     CANCELLED("CANCELLED", "Cancelado", true)
 }
+
+// 🆕 NUEVO: MODELOS PARA LETTRE DE VOITURE SOLO
+data class LettreVoitureOnlyRequest(
+    @SerializedName("societe") val societe: String,
+    @SerializedName("matricule") val matricule: String,
+    @SerializedName("date") val date: String,
+    @SerializedName("token") val token: String
+)
+
+data class LettreVoitureResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("data") val data: String? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("total_packages") val totalPackages: Int? = null,
+    @SerializedName("total_weight") val totalWeight: Double? = null
+)

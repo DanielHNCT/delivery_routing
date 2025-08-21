@@ -514,6 +514,64 @@ class ColisRepository(private val context: Context) {
     }
     
     /**
+     * 📄 LETTRE DE VOITURE SOLO (SIN LOGIN COMPLETO)
+     * 🆕 NUEVO: Método para actualizaciones rápidas usando token guardado
+     */
+    suspend fun getLettreVoitureOnly(
+        societe: String,
+        matricule: String,
+        date: String
+    ): Result<LettreVoitureResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📄 === LETTRE DE VOITURE SOLO ===")
+            Log.d(TAG, "Societe: $societe")
+            Log.d(TAG, "Matricule: $matricule")
+            Log.d(TAG, "Date: $date")
+            
+            // Obtener token guardado (sin hacer login)
+            val savedToken = tokenManager.getValidToken()
+            if (savedToken == null) {
+                Log.w(TAG, "⚠️ No hay token guardado para lettre de voiture")
+                return@withContext Result.failure(Exception("No token available for lettre de voiture"))
+            }
+            
+            Log.d(TAG, "🔑 Token guardado encontrado: ${savedToken.take(50)}...")
+            
+            // Crear request solo para lettre
+            val request = LettreVoitureOnlyRequest(
+                societe = societe,
+                matricule = matricule,
+                date = date,
+                token = savedToken
+            )
+            
+            Log.d(TAG, "📋 Lettre request: $request")
+            Log.d(TAG, "📡 Enviando request de lettre solo...")
+            
+            val response = api.getLettreVoitureOnly(request)
+            Log.d(TAG, "📡 Lettre response code: ${response.code()}")
+            
+            if (response.isSuccessful) {
+                val lettreData = response.body()!!
+                Log.d(TAG, "✅ Lettre de voiture obtenida exitosamente")
+                Log.d(TAG, "📊 Lettre data: success=${lettreData.success}")
+                
+                Result.success(lettreData)
+            } else {
+                val errorMsg = "Lettre failed with code: ${response.code()}"
+                Log.e(TAG, "❌ $errorMsg")
+                Log.e(TAG, "📋 Lettre response body: ${response.errorBody()?.string()}")
+                Result.failure(Exception(errorMsg))
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error en lettre de voiture solo: ${e.message}", e)
+            Log.e(TAG, "📋 Stack trace completo:", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
      * 📦 TOURNÉE CON AUTO-RETRY ROBUSTO
      */
     suspend fun getTourneeWithAutoRetry(

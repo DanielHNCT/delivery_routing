@@ -128,3 +128,16 @@ impl Default for WebApiHeaders {
         }
     }
 }
+
+// ============================================================================
+// LETTRE DE VOITURE SOLO (SIN LOGIN COMPLETO)
+// ============================================================================
+
+/// 🆕 NUEVO: Request para obtener solo lettre de voiture usando token guardado
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LettreVoitureOnlyRequest {
+    pub societe: String,
+    pub matricule: String,
+    pub date: String,
+    pub token: String,
+}

@@ -132,6 +132,25 @@ interface ColisApi {
         @Header("VersionCode") versionCode: String = "1"
     ): Response<TourneeResponse>
     
+    // 📄 LETTRE DE VOITURE SOLO (SIN LOGIN COMPLETO)
+    // 🆕 NUEVO: Endpoint para actualizaciones rápidas usando token guardado
+    @POST("api/colis-prive/lettre-voiture-only")
+    @Headers(
+        "Accept-Charset: UTF-8",
+        "Content-Type: application/json; charset=UTF-8",
+        "Connection: Keep-Alive",
+        "Accept-Encoding: gzip",
+        "User-Agent: okhttp/3.4.1"
+    )
+    suspend fun getLettreVoitureOnly(
+        @Body request: LettreVoitureOnlyRequest,
+        @Header("ActivityId") activityId: String = UUID.randomUUID().toString(),
+        @Header("AppName") appName: String = "CP DISTRI V2",
+        @Header("AppIdentifier") appIdentifier: String = "com.danem.cpdistriv2",
+        @Header("VersionApplication") versionApp: String = "3.3.0.9",
+        @Header("VersionCode") versionCode: String = "1"
+    ): Response<LettreVoitureResponse>
+    
     // 🏥 HEALTH CHECK
     @GET("api/colis-prive/health")
     @Headers(

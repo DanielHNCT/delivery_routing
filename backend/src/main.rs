@@ -97,6 +97,8 @@ async fn main() -> Result<()> {
         // NUEVOS ENDPOINTS v3.3.0.9 - FLUJO EXACTO DE LA APP OFICIAL
         .route("/api/colis-prive/v3/complete-flow", post(api::colis_prive::execute_complete_flow_v3))
         .route("/api/colis-prive/v3/reconnect", post(api::colis_prive::reconnect_with_tokens_v3))
+        // 🆕 NUEVO: Endpoint para lettre de voiture solo (sin login completo)
+        .route("/api/colis-prive/lettre-voiture-only", post(api::colis_prive::get_lettre_voiture_only))
         .route("/api/migration/status", get(get_migration_status))
         .route("/api/migration/strategy", post(change_migration_strategy))
         .route("/api/migration/metrics", get(get_migration_metrics))
@@ -132,6 +134,11 @@ async fn main() -> Result<()> {
     // NUEVOS ENDPOINTS PARA FLUJO COMPLETO (RESUELVE EL 401)
     info!("   POST /api/colis-prive/complete-auth-flow - Flujo completo de autenticación (RESUELVE EL 401)");
     info!("   POST /api/colis-prive/reconnect - Manejo específico de reconexión (RESUELVE EL 401)");
+    // 🆕 NUEVO: Endpoint para lettre de voiture solo
+    info!("   POST /api/colis-prive/lettre-voiture-only - Lettre de voiture solo (sin login completo)");
+    // NUEVOS ENDPOINTS v3.3.0.9 - FLUJO EXACTO DE LA APP OFICIAL
+    info!("   POST /api/colis-prive/v3/complete-flow - Flujo completo v3.3.0.9");
+    info!("   POST /api/colis-prive/v3/reconnect - Reconexión v3.3.0.9");
     info!("   GET  /api/migration/status - Estado de migración");
     info!("   POST /api/migration/strategy - Cambiar estrategia");
     info!("   GET  /api/migration/metrics - Métricas de migración");

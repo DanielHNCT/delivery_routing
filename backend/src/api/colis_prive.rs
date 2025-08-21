@@ -12,6 +12,7 @@ use crate::{
     services::colis_prive_complete_flow_service::ColisPriveCompleteFlowService,
     utils::extract_structured_data_for_mobile,
     models::colis_prive_v3_models::{CompleteFlowRequest, DeviceInfo as DeviceInfoV3},
+    models::colis_prive_web_models::LettreVoitureOnlyRequest,
 };
 use std::sync::Arc;
 use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse, VersionCheckRequest, AuditInstallRequest};
@@ -955,6 +956,87 @@ pub async fn reconnect_with_tokens_v3(
                 "error": {
                     "message": format!("Error interno del servidor: {}", e),
                     "code": "SERVICE_V3_INIT_FAILED"
+                },
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+            Ok(Json(error_response))
+        }
+    }
+}
+
+/// POST /api/colis-prive/lettre-voiture-only - Obtener lettre de voiture usando token guardado
+/// 🆕 NUEVO: Endpoint para actualizaciones rápidas sin re-autenticación
+pub async fn get_lettre_voiture_only(
+    State(_state): State<AppState>,
+    Json(request): Json<LettreVoitureOnlyRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    use crate::services::colis_prive_web_service::ColisPriveWebService;
+    use crate::models::colis_prive_web_models::LettreVoitureOnlyRequest;
+    
+    use tracing::{info, error};
+    
+    info!("📄 === LETTRE DE VOITURE SOLO ===");
+    info!("Societe: {}", request.societe);
+    info!("Matricule: {}", request.matricule);
+    info!("Date: {}", request.date);
+    info!("Token preview: {}...", &request.token[..request.token.len().min(20)]);
+    
+    // Validar parámetros requeridos
+    if request.token.is_empty() || request.matricule.is_empty() || request.date.is_empty() {
+        let error_response = json!({
+            "success": false,
+            "error": {
+                "message": "Faltan parámetros requeridos: token, matricule, date",
+                "code": "MISSING_PARAMETERS"
+            },
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        return Ok(Json(error_response));
+    }
+    
+    // Crear servicio web
+    match ColisPriveWebService::new() {
+        Ok(web_service) => {
+            // Obtener solo la lettre de voiture usando el token guardado
+            match web_service.get_letter_voiture(
+                &request.societe,
+                &request.matricule,
+                &request.date,
+                &request.token
+            ).await {
+                Ok(letter_response) => {
+                    info!("✅ Lettre de voiture obtenida exitosamente");
+                    
+                    let success_response = json!({
+                        "success": true,
+                        "data": letter_response.data,
+                        "message": letter_response.message,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    
+                    Ok(Json(success_response))
+                }
+                Err(e) => {
+                    error!("❌ Error obteniendo lettre de voiture: {}", e);
+                    let error_response = json!({
+                        "success": false,
+                        "error": {
+                            "message": format!("Error obteniendo lettre de voiture: {}", e),
+                            "code": "LETTRE_FETCH_ERROR"
+                        },
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+                    Ok(Json(error_response))
+                }
+            }
+        }
+        Err(e) => {
+            error!("❌ Error inicializando WebService: {}", e);
+            let error_response = json!({
+                "success": false,
+                "error": {
+                    "message": format!("Error interno del servidor: {}", e),
+                    "code": "WEBSERVICE_INIT_FAILED"
                 },
                 "timestamp": chrono::Utc::now().to_rfc3339()
             });
