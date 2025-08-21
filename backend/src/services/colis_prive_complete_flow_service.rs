@@ -53,6 +53,9 @@ impl ColisPriveCompleteFlowService {
             tournee_fetch_ms: None,
         };
 
+        // ✅ CORRECCIÓN: Construir matricule completo al principio
+        let matricule = format!("{}_{}", societe, username);
+        
         // Usar device_info proporcionado (ahora obligatorio)
         let app_info = AppInfo {
             societe: societe.clone(),
@@ -60,9 +63,12 @@ impl ColisPriveCompleteFlowService {
         };
 
         let mut flow_state = FlowState::new(device_info.clone(), app_info.clone());
+        
+        // ✅ CORRECCIÓN: Establecer matricule inmediatamente
+        flow_state.matricule = Some(matricule.clone());
 
         info!("🚀 Iniciando flujo completo Colis Privé v3.3.0.9");
-        info!("📱 Device: {} | Societe: {} | Date: {}", device_info.model, societe, date);
+        info!("📱 Device: {} | Societe: {} | Date: {} | Matricule: {}", device_info.model, societe, date, matricule);
 
         // PASO 1: Device Audit
         info!("📋 PASO 1: Device Audit - Registrando dispositivo...");
@@ -183,6 +189,7 @@ impl ColisPriveCompleteFlowService {
 
         timing.total_duration_ms = flow_start.elapsed().as_millis() as u64;
 
+        // ✅ CORRECCIÓN: Construir auth_data sin fallbacks hardcodeados
         let auth_data = AuthData {
             sso_hopps: flow_state.sso_hopps.clone().unwrap_or_default(),
             auth_token: flow_state.auth_token.clone(),
@@ -264,10 +271,11 @@ impl ColisPriveCompleteFlowService {
                     Err(anyhow!("Device Audit falló: {}", audit_response.message.unwrap_or("Error desconocido".to_string())))
                 }
             }
-            Err(_) => {
-                // Si no se puede parsear como DeviceAuditResponse, asumir éxito si el status es 200
-                info!("✅ Device Audit: Respuesta no estructurada pero status exitoso");
-                Ok(())
+            Err(parse_error) => {
+                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear
+                error!("❌ Device Audit: No se puede parsear respuesta - {}", parse_error);
+                error!("📥 Respuesta recibida: {}", response_text);
+                Err(anyhow!("Device Audit: Respuesta no parseable - {}", parse_error))
             }
         }
     }
@@ -280,12 +288,16 @@ impl ColisPriveCompleteFlowService {
         app_info: &AppInfo,
         flow_state: &mut FlowState,
     ) -> Result<()> {
+        // ✅ CORRECCIÓN: Usar matricule del flow_state (ya establecido)
+        let matricule = flow_state.matricule.as_ref()
+            .ok_or_else(|| anyhow!("Matricule no disponible en Version Check"))?;
+        
         // Construir URL con parámetros del endpoint real
         let url = format!(
             "{}/WebApi/STORE/api/android/Application/{}/CheckVersionForUser/{}/{}/{}/{}/{}",
             self.store_base_url,
             app_info.app_identifier,
-            &format!("{}_{}", app_info.societe, flow_state.matricule.as_ref().unwrap_or(&"UNKNOWN".to_string())),
+            matricule, // ✅ CORRECCIÓN: Usar matricule real
             app_info.version_name,
             device_info.imei,
             device_info.android_id.clone(),
@@ -317,7 +329,7 @@ impl ColisPriveCompleteFlowService {
             return Err(anyhow!("Version Check falló con status {}: {}", status, response_text));
         }
 
-        // Intentar parsear la respuesta
+        // ✅ CORRECCIÓN: Version Check robusto - NO fallbacks peligrosos
         match serde_json::from_str::<VersionCheckResponse>(&response_text) {
             Ok(version_response) => {
                 if version_response.success {
@@ -325,21 +337,20 @@ impl ColisPriveCompleteFlowService {
                         flow_state.sso_hopps = Some(sso_hopps);
                         info!("✅ Version Check: SsoHopps actualizado");
                     }
+                    info!("✅ Version Check: Versión aceptada por Colis Privé");
                     Ok(())
                 } else {
-                    Err(anyhow!("Version Check falló: {}", version_response.message.unwrap_or("Error desconocido".to_string())))
+                    // ✅ CORRECCIÓN: Fallar rápido si la versión es rechazada
+                    let error_msg = version_response.message.unwrap_or("Versión rechazada por Colis Privé".to_string());
+                    error!("❌ Version Check: Versión rechazada - {}", error_msg);
+                    Err(anyhow!("Version Check falló: {}", error_msg))
                 }
             }
-            Err(_) => {
-                // Si no se puede parsear, asumir éxito si hay SsoHopps disponible
-                if flow_state.sso_hopps.is_some() {
-                    info!("✅ Version Check: Respuesta no estructurada pero SsoHopps disponible");
-                    Ok(())
-                } else {
-                    // Intentar extraer SsoHopps de headers de respuesta si está disponible
-                    info!("✅ Version Check: Completado (sin SsoHopps específico)");
-                    Ok(())
-                }
+            Err(parse_error) => {
+                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear la respuesta
+                error!("❌ Version Check: No se puede parsear respuesta - {}", parse_error);
+                error!("📥 Respuesta recibida: {}", response_text);
+                Err(anyhow!("Version Check: Respuesta no parseable - {}", parse_error))
             }
         }
     }
@@ -401,14 +412,11 @@ impl ColisPriveCompleteFlowService {
                     Err(anyhow!("Login Principal falló: {}", login_response.message.unwrap_or("Error desconocido".to_string())))
                 }
             }
-            Err(_) => {
-                // Si no se puede parsear, asumir éxito si el status es 200
-                info!("✅ Login Principal: Respuesta no estructurada pero status exitoso");
-                // Establecer matricule por defecto si no se obtuvo
-                if flow_state.matricule.is_none() {
-                    flow_state.matricule = Some("PCP0010699_A187518".to_string());
-                }
-                Ok(())
+            Err(parse_error) => {
+                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear
+                error!("❌ Login Principal: No se puede parsear respuesta - {}", parse_error);
+                error!("📥 Respuesta recibida: {}", response_text);
+                Err(anyhow!("Login Principal: Respuesta no parseable - {}", parse_error))
             }
         }
     }
@@ -421,10 +429,14 @@ impl ColisPriveCompleteFlowService {
         password: &str,
         flow_state: &mut FlowState,
     ) -> Result<()> {
+        // ✅ CORRECCIÓN: Usar matricule del flow_state (ya establecido)
+        let matricule = flow_state.matricule.as_ref()
+            .ok_or_else(|| anyhow!("Matricule no disponible en Logging Automático"))?;
+        
         let url = format!("{}/WS_Commun/ServiceWCFLogSpir.svc/REST/LogMobilite", self.log_base_url);
         
         let request_body = LogMobiliteRequest {
-            matricule: flow_state.matricule.clone().unwrap_or("PCP0010699_A187518".to_string()),
+            matricule: matricule.clone(), // ✅ CORRECCIÓN: Usar matricule real
             type_log: "SESSION_START".to_string(),
             message: "Sesión iniciada exitosamente".to_string(),
             timestamp: Utc::now().to_rfc3339(),
@@ -442,10 +454,15 @@ impl ColisPriveCompleteFlowService {
             flow_state.sso_hopps.clone(),
         )?;
 
-        // Agregar autenticación Basic como en la app real
-        let auth_string = format!("{}:{}", username, password);
-        let auth_encoded = general_purpose::STANDARD.encode(auth_string.as_bytes());
-        headers.insert("Authorization", format!("Basic {}", auth_encoded).parse()?);
+        // ✅ CORRECCIÓN: Usar SsoHopps en lugar de Basic Auth
+        if let Some(sso_hopps) = &flow_state.sso_hopps {
+            headers.insert("Authorization", format!("Bearer {}", sso_hopps).parse()?);
+        } else {
+            warn!("⚠️ Logging Automático: Sin SsoHopps, usando Basic Auth como fallback");
+            let auth_string = format!("{}:{}", username, password);
+            let auth_encoded = general_purpose::STANDARD.encode(auth_string.as_bytes());
+            headers.insert("Authorization", format!("Basic {}", auth_encoded).parse()?);
+        }
 
         let response = self.client
             .post(&url)
@@ -464,20 +481,23 @@ impl ColisPriveCompleteFlowService {
             return Err(anyhow!("Logging Automático falló con status {}: {}", status, response_text));
         }
 
-        // Intentar parsear la respuesta
+        // ✅ CORRECCIÓN: Logging robusto - NO fallbacks peligrosos
         match serde_json::from_str::<LogMobiliteResponse>(&response_text) {
             Ok(log_response) => {
                 if log_response.success {
                     info!("✅ Logging Automático: Sesión confirmada");
                     Ok(())
                 } else {
-                    Err(anyhow!("Logging Automático falló: {}", log_response.message.unwrap_or("Error desconocido".to_string())))
+                    let error_msg = log_response.message.unwrap_or("Error desconocido en Logging".to_string());
+                    error!("❌ Logging Automático falló: {}", error_msg);
+                    Err(anyhow!("Logging Automático falló: {}", error_msg))
                 }
             }
-            Err(_) => {
-                // Si no se puede parsear, asumir éxito si el status es 200
-                info!("✅ Logging Automático: Respuesta no estructurada pero status exitoso");
-                Ok(())
+            Err(parse_error) => {
+                // ✅ CORRECCIÓN: Fallar rápido si no se puede parsear
+                error!("❌ Logging Automático: No se puede parsear respuesta - {}", parse_error);
+                error!("📥 Respuesta recibida: {}", response_text);
+                Err(anyhow!("Logging Automático: Respuesta no parseable - {}", parse_error))
             }
         }
     }
@@ -489,11 +509,15 @@ impl ColisPriveCompleteFlowService {
         flow_state: &FlowState,
         date: &str,
     ) -> Result<TourneeResponseV3> {
+        // ✅ CORRECCIÓN: Usar matricule del flow_state (ya establecido)
+        let matricule = flow_state.matricule.as_ref()
+            .ok_or_else(|| anyhow!("Matricule no disponible para obtener tournée"))?;
+        
         let url = format!("{}/WS-TourneeColis/api/getListTourneeMobileByMatriculeDistributeurDateDebut_POST", self.tournee_base_url);
         
         let request_body = TourneeRequestV3 {
             date_debut: date.to_string(),
-            matricule: flow_state.matricule.clone().unwrap_or("PCP0010699_A187518".to_string()),
+            matricule: matricule.clone(), // ✅ CORRECCIÓN: Usar matricule real
         };
 
         debug!("🔗 Tournée URL: {}", url);
