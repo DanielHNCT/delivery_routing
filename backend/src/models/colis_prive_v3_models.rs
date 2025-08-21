@@ -22,27 +22,16 @@ pub struct DeviceAuditRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeviceInfo {
-    #[serde(rename = "imei")]
     pub imei: String,
-    #[serde(rename = "android_id")]
     pub android_id: String,
-    #[serde(rename = "android_version")]
     pub android_version: String,
-    #[serde(rename = "brand")]
     pub brand: String,
-    #[serde(rename = "device")]
     pub device: String,
-    #[serde(rename = "hardware")]
     pub hardware: String,
-    #[serde(rename = "install_id")]
     pub install_id: String,
-    #[serde(rename = "manufacturer")]
     pub manufacturer: String,
-    #[serde(rename = "model")]
     pub model: String,
-    #[serde(rename = "product")]
     pub product: String,
-    #[serde(rename = "serial_number")]
     pub serial_number: String,
 }
 
@@ -383,7 +372,8 @@ pub struct CompleteFlowRequest {
     pub password: String,
     pub societe: String,
     pub date: String,
-    pub device_info: Option<DeviceInfo>,
+    pub matricule: String,
+    pub device_info: DeviceInfo,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -41,7 +41,7 @@ impl ColisPriveCompleteFlowService {
         password: String,
         societe: String,
         date: String,
-        device_info: Option<DeviceInfo>,
+        device_info: DeviceInfo,
     ) -> Result<CompleteFlowResponse> {
         let flow_start = Instant::now();
         let mut timing = FlowTiming {
@@ -53,8 +53,7 @@ impl ColisPriveCompleteFlowService {
             tournee_fetch_ms: None,
         };
 
-        // Usar device_info proporcionado o por defecto
-        let device_info = device_info.unwrap_or_default();
+        // Usar device_info proporcionado (ahora obligatorio)
         let app_info = AppInfo {
             societe: societe.clone(),
             ..Default::default()
