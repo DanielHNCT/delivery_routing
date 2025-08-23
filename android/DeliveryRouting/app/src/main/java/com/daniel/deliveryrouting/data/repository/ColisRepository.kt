@@ -95,6 +95,68 @@ class ColisRepository(private val context: Context) {
     }
     
     /**
+     * 🆕 NUEVO: LOGIN DIRECTO A COLIS PRIVE (PROXY)
+     * 
+     * Este método envía las credenciales directamente al backend
+     * que actúa como proxy a Colis Prive
+     */
+    suspend fun loginDirectToColisPrive(
+        username: String,
+        password: String,
+        societe: String,
+        apiChoice: String = "web"
+    ): Result<ColisPriveLoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "🚀 Iniciando login directo a Colis Prive")
+            Log.d(TAG, "📋 Parámetros: username=$username, societe=$societe, api_choice=$apiChoice")
+            
+            val request = ColisPriveLoginRequest(
+                username = username,
+                password = password,
+                societe = societe,
+                apiChoice = apiChoice
+            )
+            
+            Log.d(TAG, "📤 Enviando request al backend proxy...")
+            val response = api.loginDirectToColisPrive(request)
+            
+            if (response.isSuccessful) {
+                val loginResponse = response.body()
+                if (loginResponse != null && loginResponse.success) {
+                    Log.d(TAG, "✅ Login exitoso: ${loginResponse.message}")
+                    Log.d(TAG, "🔑 Token obtenido: ${loginResponse.data?.token?.take(50)}...")
+                    
+                    // Guardar el token en el TokenManager
+                    loginResponse.data?.let { authData ->
+                        tokenManager.saveToken(
+                            UserTokenData(
+                                token = authData.token,
+                                matricule = authData.matricule,
+                                societe = authData.societe,
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    
+                    Result.Success(loginResponse)
+                } else {
+                    val errorMsg = loginResponse?.error ?: "Error desconocido en la respuesta"
+                    Log.e(TAG, "❌ Login falló: $errorMsg")
+                    Result.Error(errorMsg)
+                }
+            } else {
+                val errorMsg = "Error HTTP ${response.code()}: ${response.message()}"
+                Log.e(TAG, "❌ Error HTTP: $errorMsg")
+                Result.Error(errorMsg)
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 Excepción en login directo: ${e.message}", e)
+            Result.Error("Error de conexión: ${e.message}")
+        }
+    }
+    
+    /**
      * 🔐 AUTENTICACIÓN COMPLETA (API Mobile)
      */
     suspend fun authenticate(

@@ -7,6 +7,19 @@ import java.util.*
 
 interface ColisApi {
     
+    // 🆕 NUEVO: LOGIN DIRECTO A COLIS PRIVE (PROXY)
+    @POST("api/colis-prive/login")
+    @Headers(
+        "Accept-Charset: UTF-8",
+        "Content-Type: application/json; charset=UTF-8",
+        "Connection: Keep-Alive",
+        "Accept-Encoding: gzip",
+        "User-Agent: okhttp/3.4.1"
+    )
+    suspend fun loginDirectToColisPrive(
+        @Body request: ColisPriveLoginRequest
+    ): Response<ColisPriveLoginResponse>
+    
     // 🆕 NUEVO: FLUJO COMPLETO DE AUTENTICACIÓN v3.3.0.9 (RESUELVE DEFINITIVAMENTE EL 401)
     @POST("api/colis-prive/v3/complete-flow")
     @Headers(

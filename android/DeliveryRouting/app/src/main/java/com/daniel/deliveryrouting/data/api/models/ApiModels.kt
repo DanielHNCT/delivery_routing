@@ -323,3 +323,26 @@ data class LettreVoitureResponse(
     @SerializedName("total_packages") val totalPackages: Int? = null,
     @SerializedName("total_weight") val totalWeight: Double? = null
 )
+
+// 🆕 NUEVO: MODELOS PARA LOGIN DIRECTO A COLIS PRIVE
+data class ColisPriveLoginRequest(
+    @SerializedName("username") val username: String,        // Ej: "A187518"
+    @SerializedName("password") val password: String,        // Ej: "INTI7518"
+    @SerializedName("societe") val societe: String,          // Ej: "PCP0010699"
+    @SerializedName("api_choice") val apiChoice: String = "web"  // "web" o "mobile"
+)
+
+data class ColisPriveLoginResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("message") val message: String,
+    @SerializedName("data") val data: ColisPriveAuthData?,
+    @SerializedName("error") val error: String?
+)
+
+data class ColisPriveAuthData(
+    @SerializedName("token") val token: String,
+    @SerializedName("matricule") val matricule: String,
+    @SerializedName("societe") val societe: String,
+    @SerializedName("roles") val roles: List<String>,
+    @SerializedName("isAuthentif") val isAuthentif: Boolean
+)
