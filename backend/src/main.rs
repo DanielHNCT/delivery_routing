@@ -73,6 +73,8 @@ async fn main() -> Result<()> {
     
     let app = Router::new()
         .route("/test", get(test_endpoint))
+        // 🆕 NUEVO: Login directo a Colis Prive (PROXY)
+        .route("/api/colis-prive/login", post(api::colis_prive::login_colis_prive))
         .route("/api/colis-prive/auth", post(authenticate_colis_prive))
         // .route("/api/colis-prive/auth/cached", post(authenticate_colis_prive_cached))
         .route("/api/colis-prive/tournee", post(get_tournee_data))
