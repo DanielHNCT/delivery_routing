@@ -80,58 +80,6 @@ pub async fn authenticate_colis_prive(
     }
 }
 
-/// GET /api/colis-prive/tournee - Obtener tournée (SIMPLIFICADO PARA WEB)
-pub async fn get_tournee_data(
-    State(_state): State<AppState>,
-    Json(request): Json<GetTourneeRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    log::info!("🔄 Obteniendo tournée para: {}", request.matricule);
-    
-    // ✅ SOLO FUNCIONA CON API WEB - NO REQUIERE DEVICE_INFO
-    // En el futuro implementaremos la versión mobile
-    
-    // Crear credenciales para el servicio
-    let credentials = ColisPriveAuthRequest {
-        username: request.username.clone(),
-        password: request.password.clone(),
-        societe: request.societe.clone(),
-    };
-
-    // 🔧 IMPLEMENTACIÓN SIMPLIFICADA: Solo autenticación básica
-    match authenticate_colis_prive_simple(&credentials).await {
-        Ok(auth_response) => {
-            log::info!("✅ Autenticación exitosa para tournée");
-            
-            // Crear respuesta simplificada
-            let response = json!({
-                "success": true,
-                "message": "Tournée obtenido exitosamente (modo web)",
-                "data": {
-                    "SsoHopps": auth_response.token,
-                    "matricule": request.matricule,
-                    "societe": request.societe,
-                    "date": request.date,
-                    "api_type": "web"
-                },
-                "metadata": {
-                    "date": request.date,
-                    "matricule": request.matricule,
-                    "username": request.username,
-                    "societe": request.societe,
-                    "note": "Endpoint simplificado - solo modo web"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-
-            Ok(Json(response))
-        }
-        Err(e) => {
-            log::error!("❌ Error en tournée: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
-
 /// 🔧 FUNCIÓN AUXILIAR: Autenticación simple sin device_info
 async fn authenticate_colis_prive_simple(
     credentials: &ColisPriveAuthRequest
@@ -206,6 +154,58 @@ async fn authenticate_colis_prive_simple(
     };
     
     Ok(auth_response)
+}
+
+/// GET /api/colis-prive/tournee - Obtener tournée (SIMPLIFICADO PARA WEB)
+pub async fn get_tournee_data(
+    State(_state): State<AppState>,
+    Json(request): Json<GetTourneeRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    log::info!("🔄 Obteniendo tournée para: {}", request.matricule);
+    
+    // ✅ SOLO FUNCIONA CON API WEB - NO REQUIERE DEVICE_INFO
+    // En el futuro implementaremos la versión mobile
+    
+    // Crear credenciales para el servicio
+    let credentials = ColisPriveAuthRequest {
+        username: request.username.clone(),
+        password: request.password.clone(),
+        societe: request.societe.clone(),
+    };
+
+    // 🔧 IMPLEMENTACIÓN SIMPLIFICADA: Solo autenticación básica
+    match authenticate_colis_prive_simple(&credentials).await {
+        Ok(auth_response) => {
+            log::info!("✅ Autenticación exitosa para tournée");
+            
+            // Crear respuesta simplificada
+            let response = json!({
+                "success": true,
+                "message": "Tournée obtenido exitosamente (modo web)",
+                "data": {
+                    "SsoHopps": auth_response.token,
+                    "matricule": request.matricule,
+                    "societe": request.societe,
+                    "date": request.date,
+                    "api_type": "web"
+                },
+                "metadata": {
+                    "date": request.date,
+                    "matricule": request.matricule,
+                    "username": request.username,
+                    "societe": request.societe,
+                    "note": "Endpoint simplificado - solo modo web"
+                },
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+
+            Ok(Json(response))
+        }
+        Err(e) => {
+            log::error!("❌ Error en tournée: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// GET /api/colis-prive/health - Health check del servicio
@@ -1359,104 +1359,6 @@ pub struct ColisSummary {
     pub colis_casier: i32,
 }
 
-/// 🆕 NUEVO: Endpoint para obtener Lettre de Voiture
-pub async fn get_lettre_de_voiture(
-    Json(request): Json<LettreDeVoitureRequest>,
-) -> AppResult<Json<LettreDeVoitureResponse>> {
-    log::info!("📋 Obteniendo Lettre de Voiture para matricule: {}", request.matricule);
-    
-    // Validar que el token no esté vacío
-    if request.token.is_empty() {
-        return Ok(Json(LettreDeVoitureResponse {
-            success: false,
-            message: "Token de autenticación requerido".to_string(),
-            data: None,
-            error: Some("Token vacío".to_string()),
-        }))
-    }
-    
-    // PASO 1: Obtener Lettre de Voiture usando el endpoint correcto
-    let lettre_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
-    
-    let lettre_payload = json!({
-        "enumTypeLettreVoiture": "ordreScan",
-        "beanParamsMatriculeDateDebut": {
-            "Societe": request.societe,
-            "Matricule": request.matricule,
-            "DateDebut": request.date
-        }
-    });
-    
-    log::info!("📤 Enviando request a: {}", lettre_url);
-    log::info!("📦 Payload: {}", serde_json::to_string_pretty(&lettre_payload).unwrap_or_default());
-    
-    let lettre_response = reqwest::Client::new()
-        .post(lettre_url)
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "fr-FR,fr;q=0.5")
-        .header("Cache-Control", "no-cache")
-        .header("Content-Type", "application/json")
-        .header("Origin", "https://gestiontournee.colisprive.com")
-        .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("SsoHopps", &request.token)
-        .header("User-Agent", "DeliveryRouting/1.0")
-        .json(&lettre_payload)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("❌ Error obteniendo lettre de voiture: {}", e);
-            AppError::Internal("Error de conexión con Colis Prive".to_string())
-        })?;
-    
-    if !lettre_response.status().is_success() {
-        let error_text = lettre_response.text().await.unwrap_or_default();
-        log::error!("❌ Lettre de Voiture respondió con error: {}", error_text);
-        return Ok(Json(LettreDeVoitureResponse {
-            success: false,
-            message: "Error obteniendo lettre de voiture".to_string(),
-            data: None,
-            error: Some(error_text),
-        }))
-    }
-    
-    let lettre_text = lettre_response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta del lettre: {}", e);
-        AppError::Internal("Error leyendo respuesta del lettre".to_string())
-    })?;
-    
-    log::info!("📥 Respuesta recibida: {}", &lettre_text[..lettre_text.len().min(200)]);
-    
-    // PASO 2: Parsear la respuesta del lettre
-    let lettre_data: serde_json::Value = serde_json::from_str(&lettre_text).map_err(|e| {
-        log::error!("❌ Error parseando lettre: {}", e);
-        AppError::Internal("Error parseando respuesta del lettre".to_string())
-    })?;
-    
-    // PASO 3: Extraer información del lettre
-    let tournee_info = extract_tournee_info_from_lettre(&lettre_data, &request.matricule);
-    let colis_summary = extract_colis_summary_from_lettre(&lettre_data);
-    
-    // PASO 4: Generar contenido del lettre
-    let lettre_content = generate_lettre_content_from_response(&lettre_data, &request);
-    
-    log::info!("✅ Lettre de Voiture obtenido exitosamente para: {}", request.matricule);
-    
-    Ok(Json(LettreDeVoitureResponse {
-        success: true,
-        message: "Lettre de Voiture obtenido exitosamente".to_string(),
-        data: Some(LettreDeVoitureData {
-            matricule: request.matricule,
-            societe: request.societe,
-            date: request.date,
-            tournee_info,
-            colis_summary,
-            lettre_content,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        }),
-        error: None,
-    }))
-}
-
 /// Función auxiliar para extraer información de tournée
 fn extract_tournee_info(dashboard_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
     let list_bean_tournee = dashboard_data.get("listBeanTournee")?.as_array()?;
@@ -1528,7 +1430,105 @@ fn generate_lettre_content(
     content
 }
 
-/// 🆕 NUEVO: Función auxiliar para extraer información de tournée desde el lettre
+/// 🆕 NUEVO: Endpoint para obtener Lettre de Voiture
+pub async fn get_lettre_de_voiture(
+    Json(request): Json<LettreDeVoitureRequest>,
+) -> AppResult<Json<LettreDeVoitureResponse>> {
+    log::info!("📋 Obteniendo Lettre de Voiture para matricule: {}", request.matricule);
+    
+    // Validar que el token no esté vacío
+    if request.token.is_empty() {
+        return Ok(Json(LettreDeVoitureResponse {
+            success: false,
+            message: "Token de autenticación requerido".to_string(),
+            data: None,
+            error: Some("Token vacío".to_string()),
+        }));
+    }
+    
+    // PASO 1: Obtener Lettre de Voiture usando el endpoint correcto
+    let lettre_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
+    
+    let lettre_payload = json!({
+        "enumTypeLettreVoiture": "ordreScan",
+        "beanParamsMatriculeDateDebut": {
+            "Societe": request.societe,
+            "Matricule": request.matricule,
+            "DateDebut": request.date
+        }
+    });
+    
+    log::info!("📤 Enviando request a: {}", lettre_url);
+    log::info!("📦 Payload: {}", serde_json::to_string_pretty(&lettre_payload).unwrap_or_default());
+    
+    let lettre_response = reqwest::Client::new()
+        .post(lettre_url)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "fr-FR,fr;q=0.5")
+        .header("Cache-Control", "no-cache")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Referer", "https://gestiontournee.colisprive.com/")
+        .header("SsoHopps", &request.token)
+        .header("User-Agent", "DeliveryRouting/1.0")
+        .json(&lettre_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Error obteniendo lettre de voiture: {}", e);
+            AppError::Internal("Error de conexión con Colis Prive".to_string())
+        })?;
+    
+    if !lettre_response.status().is_success() {
+        let error_text = lettre_response.text().await.unwrap_or_default();
+        log::error!("❌ Lettre de Voiture respondió con error: {}", error_text);
+        return Ok(Json(LettreDeVoitureResponse {
+            success: false,
+            message: "Error obteniendo lettre de voiture".to_string(),
+            data: None,
+            error: Some(error_text),
+        }));
+    }
+    
+    let lettre_text = lettre_response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta del lettre: {}", e);
+        AppError::Internal("Error leyendo respuesta del lettre".to_string())
+    })?;
+    
+    log::info!("📥 Respuesta recibida: {}", &lettre_text[..lettre_text.len().min(200)]);
+    
+    // PASO 2: Parsear la respuesta del lettre
+    let lettre_data: serde_json::Value = serde_json::from_str(&lettre_text).map_err(|e| {
+        log::error!("❌ Error parseando lettre: {}", e);
+        AppError::Internal("Error parseando respuesta del lettre".to_string())
+    })?;
+    
+    // PASO 3: Extraer información del lettre
+    let tournee_info = extract_tournee_info_from_lettre(&lettre_data, &request.matricule);
+    let colis_summary = extract_colis_summary_from_lettre(&lettre_data);
+    
+    // PASO 4: Generar contenido del lettre
+    let lettre_content = generate_lettre_content_from_response(&lettre_data, &request);
+    
+    log::info!("✅ Lettre de Voiture obtenido exitosamente para: {}", request.matricule);
+    
+    Ok(Json(LettreDeVoitureResponse {
+        success: true,
+        message: "Lettre de Voiture obtenido exitosamente".to_string(),
+        data: Some(LettreDeVoitureData {
+            matricule: request.matricule,
+            societe: request.societe,
+            date: request.date,
+            tournee_info,
+            colis_summary,
+            lettre_content,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+        error: None,
+    }))
+}
+
+/// Función auxiliar para extraer información de tournée desde el lettre
 fn extract_tournee_info_from_lettre(lettre_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
     // Intentar extraer información de tournée del response del lettre
     // La estructura exacta dependerá de la respuesta de Colis Prive
@@ -1543,7 +1543,7 @@ fn extract_tournee_info_from_lettre(lettre_data: &serde_json::Value, matricule: 
     })
 }
 
-/// 🆕 NUEVO: Función auxiliar para extraer resumen de colis desde el lettre
+/// Función auxiliar para extraer resumen de colis desde el lettre
 fn extract_colis_summary_from_lettre(lettre_data: &serde_json::Value) -> ColisSummary {
     // Intentar extraer información de colis del response del lettre
     // La estructura exacta dependerá de la respuesta de Colis Prive
@@ -1559,7 +1559,7 @@ fn extract_colis_summary_from_lettre(lettre_data: &serde_json::Value) -> ColisSu
     }
 }
 
-/// 🆕 NUEVO: Función auxiliar para generar contenido del lettre desde la respuesta
+/// Función auxiliar para generar contenido del lettre desde la respuesta
 fn generate_lettre_content_from_response(
     lettre_data: &serde_json::Value,
     request: &LettreDeVoitureRequest,
