@@ -1389,7 +1389,8 @@ fn extract_tournee_info(dashboard_data: &serde_json::Value, matricule: &str) -> 
 
 /// Función auxiliar para extraer resumen de colis
 fn extract_colis_summary(dashboard_data: &serde_json::Value) -> ColisSummary {
-    let bean_today = dashboard_data.get("beanToday").unwrap_or(&json!({}));
+    let empty_json = json!({});
+    let bean_today = dashboard_data.get("beanToday").unwrap_or(&empty_json);
     
     ColisSummary {
         total_colis: bean_today.get("nbColis").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
