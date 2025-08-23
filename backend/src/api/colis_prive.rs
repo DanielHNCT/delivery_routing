@@ -1,9 +1,17 @@
+use std::sync::Arc;
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::StatusCode,
     Json,
+    response::IntoResponse,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use validator::Validate;
+use log;
+use reqwest;
+use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse, VersionCheckRequest, AuditInstallRequest};
+use crate::utils::errors::{AppError, AppResult};
 use crate::{
     state::AppState,
     services::colis_prive_service::{ColisPriveService, ColisPriveAuthRequest, GetTourneeRequest},
@@ -14,8 +22,6 @@ use crate::{
     models::colis_prive_v3_models::{CompleteFlowRequest, DeviceInfo as DeviceInfoV3},
     models::colis_prive_web_models::LettreVoitureOnlyRequest,
 };
-use std::sync::Arc;
-use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse, VersionCheckRequest, AuditInstallRequest};
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
 pub async fn authenticate_colis_prive(
@@ -1043,4 +1049,182 @@ pub async fn get_lettre_voiture_only(
             Ok(Json(error_response))
         }
     }
+}
+
+/// Request de login directo a Colis Prive
+#[derive(Debug, Deserialize, Validate)]
+pub struct ColisPriveLoginRequest {
+    #[validate(length(min = 3))]
+    pub username: String,        // Ej: "A187518"
+    
+    #[validate(length(min = 3))]
+    pub password: String,        // Ej: "INTI7518"
+    
+    #[validate(length(min = 3))]
+    pub societe: String,         // Ej: "PCP0010699"
+    
+    #[serde(default = "default_api_choice")]
+    pub api_choice: String,      // "web" o "mobile" (para compatibilidad)
+    
+    #[serde(default)]
+    pub commun: Option<ColisPriveCommun>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ColisPriveCommun {
+    #[serde(default = "default_duree_token")]
+    pub dureeTokenInHour: i32,
+}
+
+fn default_duree_token() -> i32 {
+    24
+}
+
+fn default_api_choice() -> String {
+    "web".to_string()
+}
+
+/// Response del login de Colis Prive
+#[derive(Debug, Serialize)]
+pub struct ColisPriveLoginResponse {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<ColisPriveAuthData>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ColisPriveAuthData {
+    pub token: String,
+    pub matricule: String,
+    pub societe: String,
+    pub roles: Vec<String>,
+    pub isAuthentif: bool,
+}
+
+/// Login directo a Colis Prive
+pub async fn login_colis_prive(
+    Json(request): Json<ColisPriveLoginRequest>,
+) -> AppResult<Json<ColisPriveLoginResponse>> {
+    log::info!("🚀 Login directo a Colis Prive iniciado");
+    log::info!("📋 Credenciales recibidas: username={}, societe={}, api_choice={}", 
+        request.username, request.societe, request.api_choice);
+    
+    // 🆕 NUEVO: Construir el login completo para Colis Prive
+    let login = format!("{}_{}", request.societe, request.username);
+    log::info!("🔧 Login construido para Colis Prive: {}", login);
+    
+    // Construir el payload para Colis Prive
+    let payload = json!({
+        "login": login,
+        "password": request.password,
+        "societe": request.societe,
+        "commun": {
+            "dureeTokenInHour": request.commun.map(|c| c.dureeTokenInHour).unwrap_or(24)
+        }
+    });
+    
+    log::info!("📤 Enviando a Colis Prive: {}", serde_json::to_string_pretty(&payload).unwrap());
+    
+    // Hacer la llamada a Colis Prive
+    let client = reqwest::Client::new();
+    let response = client
+        .post("https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership")
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "fr-FR,fr;q=0.5")
+        .header("Cache-Control", "no-cache")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Referer", "https://gestiontournee.colisprive.com/")
+        .header("User-Agent", "DeliveryRouting/1.0")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Error en la llamada a Colis Prive: {}", e);
+            AppError::Internal("Error de conexión con Colis Prive".to_string())
+        })?;
+    
+    // Extraer el status antes de consumir la respuesta
+    let status = response.status();
+    
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("❌ Colis Prive respondió con error: {} - {}", status, error_text);
+        return Ok(Json(ColisPriveLoginResponse {
+            success: false,
+            message: format!("Error de autenticación: {}", status),
+            data: None,
+            error: Some(error_text),
+        }));
+    }
+    
+    let response_text = response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta de Colis Prive: {}", e);
+        AppError::Internal("Error leyendo respuesta".to_string())
+    })?;
+    
+    log::info!("✅ Respuesta de Colis Prive recibida: {}", response_text);
+    
+    // Parsear la respuesta de Colis Prive
+    let colis_response: serde_json::Value = serde_json::from_str(&response_text).map_err(|e| {
+        log::error!("❌ Error parseando respuesta de Colis Prive: {}", e);
+        AppError::Internal("Error parseando respuesta".to_string())
+    })?;
+    
+    // Extraer el token SsoHopps
+    let token = colis_response
+        .get("tokens")
+        .and_then(|t| t.get("SsoHopps"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+    
+    let matricule = colis_response
+        .get("matricule")
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+    
+    let societe = colis_response
+        .get("societe")
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+    
+    let roles = colis_response
+        .get("roles")
+        .and_then(|r| r.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+        .unwrap_or_default();
+    
+    let is_authentif = colis_response
+        .get("isAuthentif")
+        .and_then(|i| i.as_bool())
+        .unwrap_or(false);
+    
+    if token.is_empty() {
+        log::error!("❌ No se pudo extraer el token de la respuesta");
+        return Ok(Json(ColisPriveLoginResponse {
+            success: false,
+            message: "No se pudo obtener el token de autenticación".to_string(),
+            data: None,
+            error: Some("Token no encontrado en la respuesta".to_string()),
+        }));
+    }
+    
+    log::info!("✅ Login exitoso: matricule={}, societe={}, roles={:?}", matricule, societe, roles);
+    
+    // 🆕 NUEVO: Incluir información sobre el api_choice usado
+    let message = format!("Autenticación exitosa con Colis Prive (API: {})", request.api_choice);
+    
+    Ok(Json(ColisPriveLoginResponse {
+        success: true,
+        message,
+        data: Some(ColisPriveAuthData {
+            token: token.to_string(),
+            matricule: matricule.to_string(),
+            societe: societe.to_string(),
+            roles,
+            isAuthentif: is_authentif,
+        }),
+        error: None,
+    }))
 }
