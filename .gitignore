@@ -92,6 +92,8 @@ android/**/*.apk
 
 # 🆕 NUEVO: Carpeta de análisis del APK (excluir completamente)
 apk_analysis/
+apk_analysis/**/*
+!apk_analysis/.gitkeep
 
 # Gradle specific
 android/**/.gradle/
