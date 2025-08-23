@@ -72,7 +72,7 @@ LOGIN_RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/colis-prive/login" \
   -w "\nHTTP Status: %{http_code}")
 
 HTTP_STATUS=$(echo "$LOGIN_RESPONSE" | tail -n1 | grep -o 'HTTP Status: [0-9]*' | cut -d' ' -f3)
-RESPONSE_BODY=$(echo "$LOGIN_RESPONSE" | head -n -1)
+RESPONSE_BODY=$(echo "$LOGIN_RESPONSE" | sed '$d')
 
 log "HTTP Status: $HTTP_STATUS"
 
@@ -114,7 +114,7 @@ PILOT_RESPONSE=$(curl -s -X GET "https://ws-gestiontournee-inter.colisprive.com/
   -w "\nHTTP Status: %{http_code}")
 
 PILOT_HTTP_STATUS=$(echo "$PILOT_RESPONSE" | tail -n1 | grep -o 'HTTP Status: [0-9]*' | cut -d' ' -f3)
-PILOT_RESPONSE_BODY=$(echo "$PILOT_RESPONSE" | head -n -1)
+PILOT_RESPONSE_BODY=$(echo "$PILOT_RESPONSE" | sed '$d')
 
 log "Pilot Access HTTP Status: $PILOT_HTTP_STATUS"
 
@@ -151,7 +151,7 @@ DASHBOARD_RESPONSE=$(curl -s -X POST "https://wstournee-v2.colisprive.com/WS-Tou
   -w "\nHTTP Status: %{http_code}")
 
 DASHBOARD_HTTP_STATUS=$(echo "$DASHBOARD_RESPONSE" | tail -n1 | grep -o 'HTTP Status: [0-9]*' | cut -d' ' -f3)
-DASHBOARD_RESPONSE_BODY=$(echo "$DASHBOARD_RESPONSE" | head -n -1)
+DASHBOARD_RESPONSE_BODY=$(echo "$DASHBOARD_RESPONSE" | sed '$d')
 
 log "Dashboard HTTP Status: $DASHBOARD_HTTP_STATUS"
 
@@ -197,7 +197,7 @@ TOURNEE_RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/colis-prive/tournee" \
   -w "\nHTTP Status: %{http_code}")
 
 TOURNEE_HTTP_STATUS=$(echo "$TOURNEE_RESPONSE" | tail -n1 | grep -o 'HTTP Status: [0-9]*' | cut -d' ' -f3)
-TOURNEE_RESPONSE_BODY=$(echo "$TOURNEE_RESPONSE" | head -n -1)
+TOURNEE_RESPONSE_BODY=$(echo "$TOURNEE_RESPONSE" | sed '$d')
 
 log "Tournée HTTP Status: $TOURNEE_HTTP_STATUS"
 
@@ -225,7 +225,7 @@ LETTRE_RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/colis-prive/lettre-voiture" 
   -w "\nHTTP Status: %{http_code}")
 
 LETTRE_HTTP_STATUS=$(echo "$LETTRE_RESPONSE" | tail -n1 | grep -o 'HTTP Status: [0-9]*' | cut -d' ' -f3)
-LETTRE_RESPONSE_BODY=$(echo "$LETTRE_RESPONSE" | head -n -1)
+LETTRE_RESPONSE_BODY=$(echo "$LETTRE_RESPONSE" | sed '$d')
 
 log "Lettre de Voiture HTTP Status: $LETTRE_HTTP_STATUS"
 
