@@ -136,25 +136,75 @@ pub async fn get_tournee_data(
 async fn authenticate_colis_prive_simple(
     credentials: &ColisPriveAuthRequest
 ) -> Result<ColisPriveAuthResponse, anyhow::Error> {
-    log::info!("🔐 Autenticando con Colis Privé (modo simple)");
+    log::info!("🔐 Autenticando con Colis Privé (modo real)");
     
     // Validar credenciales básicas
     if credentials.username.is_empty() || credentials.password.is_empty() || credentials.societe.is_empty() {
         anyhow::bail!("Credenciales incompletas");
     }
     
-    // 🔧 IMPLEMENTACIÓN SIMPLIFICADA: Solo verificar que las credenciales no estén vacías
-    // En el futuro implementaremos la autenticación real con Colis Privé
+    // 🔧 IMPLEMENTACIÓN REAL: Autenticación directa con Colis Privé
+    let login_field = format!("{}_{}", credentials.societe, credentials.username);
     
-    // Por ahora, crear una respuesta simulada exitosa
+    let auth_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/auth/login/Membership";
+    let auth_payload = json!({
+        "login": login_field,
+        "password": credentials.password
+    });
+    
+    log::info!("📤 Enviando autenticación a: {}", auth_url);
+    log::info!("🔑 Login field: {}", login_field);
+    
+    let auth_response = reqwest::Client::new()
+        .post(auth_url)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "fr-FR,fr;q=0.5")
+        .header("Cache-Control", "no-cache")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Referer", "https://gestiontournee.colisprive.com/")
+        .header("User-Agent", "DeliveryRouting/1.0")
+        .json(&auth_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Error de conexión con Colis Privé: {}", e);
+            anyhow::anyhow!("Error de conexión: {}", e)
+        })?;
+    
+    if !auth_response.status().is_success() {
+        let error_text = auth_response.text().await.unwrap_or_default();
+        log::error!("❌ Colis Privé respondió con error: {}", error_text);
+        anyhow::bail!("Error de autenticación: {}", error_text);
+    }
+    
+    let auth_text = auth_response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta de autenticación: {}", e);
+        anyhow::anyhow!("Error leyendo respuesta: {}", e)
+    })?;
+    
+    log::info!("📥 Respuesta de autenticación recibida: {}", &auth_text[..auth_text.len().min(200)]);
+    
+    // Parsear la respuesta de Colis Privé
+    let auth_data: serde_json::Value = serde_json::from_str(&auth_text).map_err(|e| {
+        log::error!("❌ Error parseando respuesta de autenticación: {}", e);
+        anyhow::anyhow!("Error parseando respuesta: {}", e)
+    })?;
+    
+    // Extraer el token SsoHopps real
+    let sso_hopps = auth_data.get("SsoHopps")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Token SsoHopps no encontrado en la respuesta"))?;
+    
+    log::info!("✅ Token SsoHopps obtenido exitosamente");
+    
     let auth_response = ColisPriveAuthResponse {
         success: true,
-        message: "Autenticación simulada exitosa (modo web)".to_string(),
-        token: Some("TOKEN_SIMULADO_PARA_WEB".to_string()),
+        message: "Autenticación exitosa con Colis Privé".to_string(),
+        token: Some(sso_hopps.to_string()),
         matricule: Some(credentials.username.clone()),
     };
     
-    log::info!("✅ Autenticación simulada exitosa");
     Ok(auth_response)
 }
 
