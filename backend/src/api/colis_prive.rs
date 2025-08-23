@@ -1289,22 +1289,26 @@ pub async fn get_lettre_de_voiture(
             message: "Token de autenticación requerido".to_string(),
             data: None,
             error: Some("Token vacío".to_string()),
-        }));
+        }))
     }
     
-    // PASO 1: Obtener información del dashboard usando el token
-    let dashboard_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getBeanInfoDashBoardBySocieteMatriculev2/";
+    // PASO 1: Obtener Lettre de Voiture usando el endpoint correcto
+    let lettre_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
     
-    let dashboard_payload = json!({
-        "Societe": request.societe,
-        "Matricule": request.matricule,
-        "DateDebut": format!("{}T00:00:00.000Z", request.date),
-        "Agence": null,
-        "Concentrateur": null
+    let lettre_payload = json!({
+        "enumTypeLettreVoiture": "ordreScan",
+        "beanParamsMatriculeDateDebut": {
+            "Societe": request.societe,
+            "Matricule": request.matricule,
+            "DateDebut": request.date
+        }
     });
     
-    let dashboard_response = reqwest::Client::new()
-        .post(dashboard_url)
+    log::info!("📤 Enviando request a: {}", lettre_url);
+    log::info!("📦 Payload: {}", serde_json::to_string_pretty(&lettre_payload).unwrap_or_default());
+    
+    let lettre_response = reqwest::Client::new()
+        .post(lettre_url)
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "fr-FR,fr;q=0.5")
         .header("Cache-Control", "no-cache")
@@ -1313,47 +1317,50 @@ pub async fn get_lettre_de_voiture(
         .header("Referer", "https://gestiontournee.colisprive.com/")
         .header("SsoHopps", &request.token)
         .header("User-Agent", "DeliveryRouting/1.0")
-        .json(&dashboard_payload)
+        .json(&lettre_payload)
         .send()
         .await
         .map_err(|e| {
-            log::error!("❌ Error obteniendo dashboard: {}", e);
+            log::error!("❌ Error obteniendo lettre de voiture: {}", e);
             AppError::Internal("Error de conexión con Colis Prive".to_string())
         })?;
     
-    if !dashboard_response.status().is_success() {
-        let error_text = dashboard_response.text().await.unwrap_or_default();
-        log::error!("❌ Dashboard respondió con error: {}", error_text);
+    if !lettre_response.status().is_success() {
+        let error_text = lettre_response.text().await.unwrap_or_default();
+        log::error!("❌ Lettre de Voiture respondió con error: {}", error_text);
         return Ok(Json(LettreDeVoitureResponse {
             success: false,
-            message: "Error obteniendo información del dashboard".to_string(),
+            message: "Error obteniendo lettre de voiture".to_string(),
             data: None,
             error: Some(error_text),
-        }));
+        }))
     }
     
-    let dashboard_text = dashboard_response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta del dashboard: {}", e);
-        AppError::Internal("Error leyendo respuesta del dashboard".to_string())
+    let lettre_text = lettre_response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta del lettre: {}", e);
+        AppError::Internal("Error leyendo respuesta del lettre".to_string())
     })?;
     
-    let dashboard_data: serde_json::Value = serde_json::from_str(&dashboard_text).map_err(|e| {
-        log::error!("❌ Error parseando dashboard: {}", e);
-        AppError::Internal("Error parseando respuesta del dashboard".to_string())
+    log::info!("📥 Respuesta recibida: {}", &lettre_text[..lettre_text.len().min(200)]);
+    
+    // PASO 2: Parsear la respuesta del lettre
+    let lettre_data: serde_json::Value = serde_json::from_str(&lettre_text).map_err(|e| {
+        log::error!("❌ Error parseando lettre: {}", e);
+        AppError::Internal("Error parseando respuesta del lettre".to_string())
     })?;
     
-    // PASO 2: Extraer información relevante para el lettre
-    let tournee_info = extract_tournee_info(&dashboard_data, &request.matricule);
-    let colis_summary = extract_colis_summary(&dashboard_data);
+    // PASO 3: Extraer información del lettre
+    let tournee_info = extract_tournee_info_from_lettre(&lettre_data, &request.matricule);
+    let colis_summary = extract_colis_summary_from_lettre(&lettre_data);
     
-    // PASO 3: Generar contenido del lettre
-    let lettre_content = generate_lettre_content(&request, &tournee_info, &colis_summary);
+    // PASO 4: Generar contenido del lettre
+    let lettre_content = generate_lettre_content_from_response(&lettre_data, &request);
     
-    log::info!("✅ Lettre de Voiture generado exitosamente para: {}", request.matricule);
+    log::info!("✅ Lettre de Voiture obtenido exitosamente para: {}", request.matricule);
     
     Ok(Json(LettreDeVoitureResponse {
         success: true,
-        message: "Lettre de Voiture generado exitosamente".to_string(),
+        message: "Lettre de Voiture obtenido exitosamente".to_string(),
         data: Some(LettreDeVoitureData {
             matricule: request.matricule,
             societe: request.societe,
@@ -1432,6 +1439,61 @@ fn generate_lettre_content(
     content.push_str(&format!("Colis Premium: {}\n", colis_summary.colis_premium));
     content.push_str(&format!("Colis Relais: {}\n", colis_summary.colis_relais));
     content.push_str(&format!("Colis Casier: {}\n", colis_summary.colis_casier));
+    
+    content.push_str("\n=== FIN LETTRE DE VOITURE ===\n");
+    
+    content
+}
+
+/// 🆕 NUEVO: Función auxiliar para extraer información de tournée desde el lettre
+fn extract_tournee_info_from_lettre(lettre_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
+    // Intentar extraer información de tournée del response del lettre
+    // La estructura exacta dependerá de la respuesta de Colis Prive
+    
+    // Por ahora, crear información básica basada en el matricule
+    Some(TourneeInfo {
+        code_tournee: format!("TOUR_{}", matricule),
+        statut: "En cours".to_string(),
+        distributeur: "Distributeur".to_string(),
+        centre: "Centre".to_string(),
+        point_concentration: "Point de concentration".to_string(),
+    })
+}
+
+/// 🆕 NUEVO: Función auxiliar para extraer resumen de colis desde el lettre
+fn extract_colis_summary_from_lettre(lettre_data: &serde_json::Value) -> ColisSummary {
+    // Intentar extraer información de colis del response del lettre
+    // La estructura exacta dependerá de la respuesta de Colis Prive
+    
+    // Por ahora, crear resumen básico
+    ColisSummary {
+        total_colis: 0,
+        colis_distribue: 0,
+        colis_restant: 0,
+        colis_premium: 0,
+        colis_relais: 0,
+        colis_casier: 0,
+    }
+}
+
+/// 🆕 NUEVO: Función auxiliar para generar contenido del lettre desde la respuesta
+fn generate_lettre_content_from_response(
+    lettre_data: &serde_json::Value,
+    request: &LettreDeVoitureRequest,
+) -> String {
+    let mut content = String::new();
+    
+    content.push_str("=== LETTRE DE VOITURE ===\n");
+    content.push_str(&format!("Date: {}\n", request.date));
+    content.push_str(&format!("Matricule: {}\n", request.matricule));
+    content.push_str(&format!("Société: {}\n", request.societe));
+    content.push_str(&format!("Timestamp: {}\n\n", chrono::Utc::now().to_rfc3339()));
+    
+    // Agregar información del response del lettre
+    content.push_str("=== RÉPONSE DU LETTRE ===\n");
+    if let Some(response_str) = serde_json::to_string_pretty(lettre_data).ok() {
+        content.push_str(&format!("Response: {}\n", response_str));
+    }
     
     content.push_str("\n=== FIN LETTRE DE VOITURE ===\n");
     
