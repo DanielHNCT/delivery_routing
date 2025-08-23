@@ -1228,3 +1228,211 @@ pub async fn login_colis_prive(
         error: None,
     }))
 }
+
+/// 🆕 NUEVO: Modelos para Lettre de Voiture
+#[derive(Debug, Deserialize)]
+pub struct LettreDeVoitureRequest {
+    pub token: String,
+    pub matricule: String,
+    pub societe: String,
+    pub date: String, // YYYY-MM-DD
+}
+
+#[derive(Debug, Serialize)]
+pub struct LettreDeVoitureResponse {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<LettreDeVoitureData>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LettreDeVoitureData {
+    pub matricule: String,
+    pub societe: String,
+    pub date: String,
+    pub tournee_info: Option<TourneeInfo>,
+    pub colis_summary: ColisSummary,
+    pub lettre_content: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TourneeInfo {
+    pub code_tournee: String,
+    pub statut: String,
+    pub distributeur: String,
+    pub centre: String,
+    pub point_concentration: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ColisSummary {
+    pub total_colis: i32,
+    pub colis_distribue: i32,
+    pub colis_restant: i32,
+    pub colis_premium: i32,
+    pub colis_relais: i32,
+    pub colis_casier: i32,
+}
+
+/// 🆕 NUEVO: Endpoint para obtener Lettre de Voiture
+pub async fn get_lettre_de_voiture(
+    Json(request): Json<LettreDeVoitureRequest>,
+) -> AppResult<Json<LettreDeVoitureResponse>> {
+    log::info!("📋 Obteniendo Lettre de Voiture para matricule: {}", request.matricule);
+    
+    // Validar que el token no esté vacío
+    if request.token.is_empty() {
+        return Ok(Json(LettreDeVoitureResponse {
+            success: false,
+            message: "Token de autenticación requerido".to_string(),
+            data: None,
+            error: Some("Token vacío".to_string()),
+        }));
+    }
+    
+    // PASO 1: Obtener información del dashboard usando el token
+    let dashboard_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getBeanInfoDashBoardBySocieteMatriculev2/";
+    
+    let dashboard_payload = json!({
+        "Societe": request.societe,
+        "Matricule": request.matricule,
+        "DateDebut": format!("{}T00:00:00.000Z", request.date),
+        "Agence": null,
+        "Concentrateur": null
+    });
+    
+    let dashboard_response = reqwest::Client::new()
+        .post(dashboard_url)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "fr-FR,fr;q=0.5")
+        .header("Cache-Control", "no-cache")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Referer", "https://gestiontournee.colisprive.com/")
+        .header("SsoHopps", &request.token)
+        .header("User-Agent", "DeliveryRouting/1.0")
+        .json(&dashboard_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Error obteniendo dashboard: {}", e);
+            AppError::Internal("Error de conexión con Colis Prive".to_string())
+        })?;
+    
+    if !dashboard_response.status().is_success() {
+        let error_text = dashboard_response.text().await.unwrap_or_default();
+        log::error!("❌ Dashboard respondió con error: {}", error_text);
+        return Ok(Json(LettreDeVoitureResponse {
+            success: false,
+            message: "Error obteniendo información del dashboard".to_string(),
+            data: None,
+            error: Some(error_text),
+        }));
+    }
+    
+    let dashboard_text = dashboard_response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta del dashboard: {}", e);
+        AppError::Internal("Error leyendo respuesta del dashboard".to_string())
+    })?;
+    
+    let dashboard_data: serde_json::Value = serde_json::from_str(&dashboard_text).map_err(|e| {
+        log::error!("❌ Error parseando dashboard: {}", e);
+        AppError::Internal("Error parseando respuesta del dashboard".to_string())
+    })?;
+    
+    // PASO 2: Extraer información relevante para el lettre
+    let tournee_info = extract_tournee_info(&dashboard_data, &request.matricule);
+    let colis_summary = extract_colis_summary(&dashboard_data);
+    
+    // PASO 3: Generar contenido del lettre
+    let lettre_content = generate_lettre_content(&request, &tournee_info, &colis_summary);
+    
+    log::info!("✅ Lettre de Voiture generado exitosamente para: {}", request.matricule);
+    
+    Ok(Json(LettreDeVoitureResponse {
+        success: true,
+        message: "Lettre de Voiture generado exitosamente".to_string(),
+        data: Some(LettreDeVoitureData {
+            matricule: request.matricule,
+            societe: request.societe,
+            date: request.date,
+            tournee_info,
+            colis_summary,
+            lettre_content,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+        error: None,
+    }))
+}
+
+/// Función auxiliar para extraer información de tournée
+fn extract_tournee_info(dashboard_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
+    let list_bean_tournee = dashboard_data.get("listBeanTournee")?.as_array()?;
+    
+    for tournee in list_bean_tournee {
+        if let Some(code_tournee) = tournee.get("codeTournee")?.as_str() {
+            if code_tournee.contains(matricule) {
+                return Some(TourneeInfo {
+                    code_tournee: code_tournee.to_string(),
+                    statut: tournee.get("statutTournee")?.as_str().unwrap_or("").to_string(),
+                    distributeur: tournee.get("beanDistributeur")?.get("nomDistributeur")?.as_str().unwrap_or("").to_string(),
+                    centre: tournee.get("codeCentre")?.as_str().unwrap_or("").to_string(),
+                    point_concentration: tournee.get("codePointConcentration")?.as_str().unwrap_or("").to_string(),
+                });
+            }
+        }
+    }
+    None
+}
+
+/// Función auxiliar para extraer resumen de colis
+fn extract_colis_summary(dashboard_data: &serde_json::Value) -> ColisSummary {
+    let bean_today = dashboard_data.get("beanToday").unwrap_or(&json!({}));
+    
+    ColisSummary {
+        total_colis: bean_today.get("nbColis").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+        colis_distribue: bean_today.get("nbDistribue").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+        colis_restant: bean_today.get("nbNonAttribue").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+        colis_premium: bean_today.get("nbColisPremium").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+        colis_relais: 0, // Se calcularía de listBeanTournee
+        colis_casier: 0, // Se calcularía de listBeanTournee
+    }
+}
+
+/// Función auxiliar para generar contenido del lettre
+fn generate_lettre_content(
+    request: &LettreDeVoitureRequest,
+    tournee_info: &Option<TourneeInfo>,
+    colis_summary: &ColisSummary,
+) -> String {
+    let mut content = String::new();
+    
+    content.push_str("=== LETTRE DE VOITURE ===\n");
+    content.push_str(&format!("Date: {}\n", request.date));
+    content.push_str(&format!("Matricule: {}\n", request.matricule));
+    content.push_str(&format!("Société: {}\n", request.societe));
+    content.push_str(&format!("Timestamp: {}\n\n", chrono::Utc::now().to_rfc3339()));
+    
+    if let Some(tournee) = tournee_info {
+        content.push_str("=== INFORMACIÓN DE TOURNÉE ===\n");
+        content.push_str(&format!("Code Tournée: {}\n", tournee.code_tournee));
+        content.push_str(&format!("Statut: {}\n", tournee.statut));
+        content.push_str(&format!("Distributeur: {}\n", tournee.distributeur));
+        content.push_str(&format!("Centre: {}\n", tournee.centre));
+        content.push_str(&format!("Point de Concentration: {}\n\n", tournee.point_concentration));
+    }
+    
+    content.push_str("=== RÉSUMÉ DES COLIS ===\n");
+    content.push_str(&format!("Total Colis: {}\n", colis_summary.total_colis));
+    content.push_str(&format!("Colis Distribués: {}\n", colis_summary.colis_distribue));
+    content.push_str(&format!("Colis Restants: {}\n", colis_summary.colis_restant));
+    content.push_str(&format!("Colis Premium: {}\n", colis_summary.colis_premium));
+    content.push_str(&format!("Colis Relais: {}\n", colis_summary.colis_relais));
+    content.push_str(&format!("Colis Casier: {}\n", colis_summary.colis_casier));
+    
+    content.push_str("\n=== FIN LETTRE DE VOITURE ===\n");
+    
+    content
+}

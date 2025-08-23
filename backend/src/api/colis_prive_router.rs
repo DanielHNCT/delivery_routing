@@ -11,5 +11,6 @@ pub fn create_colis_prive_router() -> Router<AppState> {
         .route("/login", post(login_colis_prive))           // 🆕 NUEVO: Login directo
         .route("/auth", post(authenticate_colis_prive))     // 🔄 MANTENER: Para compatibilidad
         .route("/tournee", post(get_tournee_data))
+        .route("/lettre-voiture", post(get_lettre_de_voiture))  // 🆕 NUEVO: Lettre de Voiture
         .route("/health", get(health_check))
 }
