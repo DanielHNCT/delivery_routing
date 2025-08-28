@@ -28,4 +28,5 @@ pub struct GetTourneeRequest {
     pub password: String,
     pub societe: String,
     pub matricule: String,
+    pub date: Option<String>, // Campo opcional para fecha
 }

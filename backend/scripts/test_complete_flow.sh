@@ -13,7 +13,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuración
-BACKEND_URL="http://localhost:3000"
+# Cambiar esta URL según donde esté corriendo tu backend
+BACKEND_URL="${BACKEND_URL:-http://localhost:3000}"
 LOG_FILE="test_flow_$(date +%Y%m%d_%H%M%S).log"
 
 echo -e "${BLUE}🧪 INICIANDO PRUEBA COMPLETA DEL FLUJO COLIS PRIVÉ${NC}"
@@ -21,6 +22,12 @@ echo "=================================================="
 echo "Backend URL: $BACKEND_URL"
 echo "Log file: $LOG_FILE"
 echo "Timestamp: $(date)"
+echo ""
+echo -e "${YELLOW}💡 INSTRUCCIONES:${NC}"
+echo "1. Asegúrate de que el backend esté corriendo"
+echo "2. Si el backend está en otra máquina, ejecuta:"
+echo "   BACKEND_URL=http://IP_DEL_PI:3000 ./scripts/test_complete_flow.sh"
+echo "3. Ejemplo: BACKEND_URL=http://192.168.1.100:3000 ./scripts/test_complete_flow.sh"
 echo ""
 
 # Función para logging
@@ -52,7 +59,7 @@ make_request() {
     
     # Separar respuesta y status
     http_status=$(echo "$response" | tail -n1 | cut -d: -f2)
-    response_body=$(echo "$response" | head -n -1)
+    response_body=$(echo "$response" | sed '$d')
     
     log "${GREEN}✅ Respuesta recibida (HTTP $http_status):${NC}"
     echo "$response_body" | jq . 2>/dev/null || echo "$response_body"
