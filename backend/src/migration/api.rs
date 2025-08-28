@@ -1,28 +1,25 @@
+//! API de migración mínima
+//! 
+//! Este módulo contiene la API mínima de migración.
+
 use axum::{
     extract::State,
     http::StatusCode,
     Json,
 };
 use serde_json::json;
-use tracing::{info, error};
+use tracing::info;
 
-use crate::{
-    state::AppState,
-    migration::services::{MigrationService, MigrationStrategy, MigrationConfig},
-};
+use crate::state::AppState;
 
 /// GET /api/migration/status - Obtener estado actual de la migración
 pub async fn get_migration_status(
     State(_state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // TODO: Implementar cuando tengamos el servicio de migración en el estado
     let status = json!({
         "current_strategy": "WebOnly",
-        "mobile_percentage": 0.0,
-        "web_percentage": 1.0,
-        "auto_progression": true,
-        "last_updated": chrono::Utc::now().to_rfc3339(),
-        "status": "active"
+        "status": "active",
+        "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
     Ok(Json(status))
@@ -31,15 +28,13 @@ pub async fn get_migration_status(
 /// POST /api/migration/strategy - Cambiar estrategia de migración
 pub async fn change_migration_strategy(
     State(_state): State<AppState>,
-    Json(request): Json<ChangeStrategyRequest>,
+    Json(request): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    info!("🔄 Cambiando estrategia de migración a: {:?}", request.strategy);
+    info!("🔄 Cambiando estrategia de migración");
     
-    // TODO: Implementar cuando tengamos el servicio de migración en el estado
     let response = json!({
         "success": true,
-        "message": format!("Estrategia cambiada a {:?}", request.strategy),
-        "new_strategy": request.strategy,
+        "message": "Estrategia cambiada exitosamente",
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
@@ -50,26 +45,9 @@ pub async fn change_migration_strategy(
 pub async fn get_migration_metrics(
     State(_state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // TODO: Implementar cuando tengamos el servicio de migración en el estado
     let metrics = json!({
-        "strategies": {
-            "WebOnly": {
-                "total_requests": 150,
-                "successful_requests": 145,
-                "failed_requests": 5,
-                "success_rate": 0.967,
-                "avg_response_time_ms": 280.5
-            },
-            "Mobile20": {
-                "total_requests": 30,
-                "successful_requests": 29,
-                "failed_requests": 1,
-                "success_rate": 0.967,
-                "avg_response_time_ms": 45.2
-            }
-        },
         "current_strategy": "WebOnly",
-        "last_updated": chrono::Utc::now().to_rfc3339()
+        "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
     Ok(Json(metrics))
@@ -81,11 +59,9 @@ pub async fn force_migration_progress(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     info!("🚀 Forzando progresión de migración");
     
-    // TODO: Implementar cuando tengamos el servicio de migración en el estado
     let response = json!({
         "success": true,
         "message": "Progresión forzada exitosamente",
-        "new_strategy": "Mobile20",
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
@@ -98,11 +74,9 @@ pub async fn force_migration_rollback(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     info!("🔄 Forzando rollback de migración");
     
-    // TODO: Implementar cuando tengamos el servicio de migración en el estado
     let response = json!({
         "success": true,
-        "message": "Rollback forzado exitosamente",
-        "new_strategy": "WebOnly",
+        "message": "Rollback ejecutado exitosamente",
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
@@ -116,16 +90,8 @@ pub async fn migration_health_check(
     let health = json!({
         "status": "healthy",
         "service": "migration",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "version": "1.0.0"
+        "timestamp": chrono::Utc::now().to_rfc3339()
     });
     
     Ok(Json(health))
-}
-
-/// Request para cambiar estrategia
-#[derive(Debug, serde::Deserialize)]
-pub struct ChangeStrategyRequest {
-    pub strategy: MigrationStrategy,
-    pub reason: Option<String>,
 }

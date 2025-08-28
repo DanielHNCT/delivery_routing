@@ -1,38 +1,28 @@
-use std::sync::Arc;
 use axum::{
-    extract::{Extension, State},
+    extract::State,
     http::StatusCode,
     Json,
-    response::IntoResponse,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use validator::Validate;
 use log;
 use reqwest;
-use crate::external_models::{MobileTourneeRequest, MobileTourneeResponse, MobilePackageAction, RefreshTokenRequest, TourneeRequestWithToken, TourneeRequestWithRetry, ColisAuthResponse, VersionCheckRequest, AuditInstallRequest};
-use crate::utils::errors::{AppError, AppResult};
 use crate::{
     state::AppState,
-    services::colis_prive_service::{ColisPriveService, ColisPriveAuthRequest, GetTourneeRequest, ColisPriveAuthResponse},
-    services::app_version_service::AppVersionService,
-    services::colis_prive_flow_service::ColisPriveFlowService,
-    services::colis_prive_complete_flow_service::ColisPriveCompleteFlowService,
-    utils::extract_structured_data_for_mobile,
-    models::colis_prive_v3_models::{CompleteFlowRequest, DeviceInfo as DeviceInfoV3},
-    models::colis_prive_web_models::LettreVoitureOnlyRequest,
+    services::colis_prive_service::{ColisPriveAuthRequest, GetTourneeRequest, ColisPriveAuthResponse},
 };
 
-/// POST /api/colis-prive/auth - Autenticar con Colis Privé
+/// POST /api/colis-prive/auth - Autenticar con Colis Privé (API Web)
 pub async fn authenticate_colis_prive(
     State(_state): State<AppState>,
     Json(credentials): Json<ColisPriveAuthRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    log::info!("🔐 Iniciando autenticación Colis Privé (API Web)");
+    
     // Clonar las credenciales para poder usarlas después
     let username = credentials.username.clone();
     let societe = credentials.societe.clone();
     
-    match ColisPriveService::authenticate_colis_prive(credentials).await {
+    match authenticate_colis_prive_web(&credentials).await {
         Ok(response) => {
             if response.success {
                 let auth_response = json!({
@@ -46,7 +36,8 @@ pub async fn authenticate_colis_prive(
                         "username": username,
                         "societe": societe
                     },
-                    "timestamp": chrono::Utc::now().to_rfc3339()
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "api_type": "web"
                 });
                 Ok(Json(auth_response))
             } else {
@@ -66,7 +57,7 @@ pub async fn authenticate_colis_prive(
             }
         }
         Err(e) => {
-            tracing::error!("Error en autenticación Colis Privé: {}", e);
+            log::error!("❌ Error en autenticación Colis Privé: {}", e);
             let error_response = json!({
                 "success": false,
                 "error": {
@@ -80,38 +71,45 @@ pub async fn authenticate_colis_prive(
     }
 }
 
-/// 🔧 FUNCIÓN AUXILIAR: Autenticación simple sin device_info
-async fn authenticate_colis_prive_simple(
+/// 🔧 FUNCIÓN AUXILIAR: Autenticación web con headers exactos del navegador
+async fn authenticate_colis_prive_web(
     credentials: &ColisPriveAuthRequest
 ) -> Result<ColisPriveAuthResponse, anyhow::Error> {
-    log::info!("🔐 Autenticando con Colis Privé (modo real)");
+    log::info!("🔐 Autenticando con Colis Privé (API Web - Headers exactos)");
     
     // Validar credenciales básicas
     if credentials.username.is_empty() || credentials.password.is_empty() || credentials.societe.is_empty() {
         anyhow::bail!("Credenciales incompletas");
     }
     
-    // 🔧 IMPLEMENTACIÓN REAL: Autenticación directa con Colis Privé
+    // 🔧 IMPLEMENTACIÓN WEB: Autenticación con headers exactos del navegador
     let login_field = format!("{}_{}", credentials.societe, credentials.username);
     
-    let auth_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/auth/login/Membership";
+    let auth_url = "https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership";
     let auth_payload = json!({
         "login": login_field,
-        "password": credentials.password
+        "password": credentials.password,
+        "societe": credentials.societe,
+        "commun": {
+            "dureeTokenInHour": 24
+        }
     });
     
     log::info!("📤 Enviando autenticación a: {}", auth_url);
     log::info!("🔑 Login field: {}", login_field);
     
+    // 🎯 HEADERS EXACTOS DEL NAVEGADOR
     let auth_response = reqwest::Client::new()
         .post(auth_url)
         .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .header("Accept-Language", "fr-FR,fr;q=0.5")
         .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
         .header("Content-Type", "application/json")
         .header("Origin", "https://gestiontournee.colisprive.com")
         .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("User-Agent", "DeliveryRouting/1.0")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
         .json(&auth_payload)
         .send()
         .await
@@ -120,10 +118,11 @@ async fn authenticate_colis_prive_simple(
             anyhow::anyhow!("Error de conexión: {}", e)
         })?;
     
-    if !auth_response.status().is_success() {
+    let status = auth_response.status();
+    if !status.is_success() {
         let error_text = auth_response.text().await.unwrap_or_default();
-        log::error!("❌ Colis Privé respondió con error: {}", error_text);
-        anyhow::bail!("Error de autenticación: {}", error_text);
+        log::error!("❌ Colis Privé respondió con error {}: {}", status, error_text);
+        anyhow::bail!("Error de autenticación {}: {}", status, error_text);
     }
     
     let auth_text = auth_response.text().await.map_err(|e| {
@@ -140,7 +139,8 @@ async fn authenticate_colis_prive_simple(
     })?;
     
     // Extraer el token SsoHopps real
-    let sso_hopps = auth_data.get("SsoHopps")
+    let sso_hopps = auth_data.get("tokens")
+        .and_then(|tokens| tokens.get("SsoHopps"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Token SsoHopps no encontrado en la respuesta"))?;
     
@@ -148,7 +148,7 @@ async fn authenticate_colis_prive_simple(
     
     let auth_response = ColisPriveAuthResponse {
         success: true,
-        message: "Autenticación exitosa con Colis Privé".to_string(),
+        message: "Autenticación exitosa con Colis Privé (API Web)".to_string(),
         token: Some(sso_hopps.to_string()),
         matricule: Some(credentials.username.clone()),
     };
@@ -156,15 +156,14 @@ async fn authenticate_colis_prive_simple(
     Ok(auth_response)
 }
 
-/// GET /api/colis-prive/tournee - Obtener tournée (SIMPLIFICADO PARA WEB)
+/// POST /api/colis-prive/tournee - Obtener tournée (API Web)
 pub async fn get_tournee_data(
     State(_state): State<AppState>,
     Json(request): Json<GetTourneeRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    log::info!("🔄 Obteniendo tournée para: {}", request.matricule);
+    log::info!("🔄 Obteniendo tournée para: {} (API Web)", request.matricule);
     
     // ✅ SOLO FUNCIONA CON API WEB - NO REQUIERE DEVICE_INFO
-    // En el futuro implementaremos la versión mobile
     
     // Crear credenciales para el servicio
     let credentials = ColisPriveAuthRequest {
@@ -172,599 +171,59 @@ pub async fn get_tournee_data(
         password: request.password.clone(),
         societe: request.societe.clone(),
     };
-
-    // 🔧 IMPLEMENTACIÓN SIMPLIFICADA: Solo autenticación básica
-    match authenticate_colis_prive_simple(&credentials).await {
+    
+    // Autenticar primero para obtener el token
+    let auth_result = authenticate_colis_prive_web(&credentials).await;
+    match auth_result {
         Ok(auth_response) => {
-            log::info!("✅ Autenticación exitosa para tournée");
-            
-            // Crear respuesta simplificada
-            let response = json!({
-                "success": true,
-                "message": "Tournée obtenido exitosamente (modo web)",
-                "data": {
-                    "SsoHopps": auth_response.token,
-                    "matricule": request.matricule,
-                    "societe": request.societe,
-                    "date": request.date,
-                    "api_type": "web"
-                },
-                "metadata": {
-                    "date": request.date,
-                    "matricule": request.matricule,
-                    "username": request.username,
-                    "societe": request.societe,
-                    "note": "Endpoint simplificado - solo modo web"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-
-            Ok(Json(response))
-        }
-        Err(e) => {
-            log::error!("❌ Error en tournée: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
-
-/// GET /api/colis-prive/health - Health check del servicio
-pub async fn health_check() -> Json<serde_json::Value> {
-    Json(json!({
-        "service": "colis-prive",
-        "status": "healthy",
-        "message": "Servicio Colis Privé funcionando correctamente"
-    }))
-}
-
-/// GET /api/colis-prive/health - Health check de Colis Privé
-pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, StatusCode> {
-    use tracing::info;
-    
-    info!(
-        endpoint = "health_check",
-        "Starting Colis Privé health check"
-    );
-    
-    let start_time = std::time::Instant::now();
-    
-    // ❌ PROBLEMA: No podemos usar device info hardcodeado en health check
-    // El health check debe verificar solo la conectividad básica, no crear clientes
-    let health_info = json!({
-        "status": "healthy",
-        "colis_prive_client": {
-            "ssl_bypass_enabled": true,
-            "headers_system": "implemented",
-            "device_info_consistency": "enforced"
-        },
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "version": env!("CARGO_PKG_VERSION"),
-        "check_duration_ms": start_time.elapsed().as_millis(),
-        "note": "Device info consistency enforced - no hardcoded values"
-    });
-    
-    // Health check completado - device info consistency enforced
-    
-    info!(
-        endpoint = "health_check",
-        status = "healthy",
-        duration_ms = start_time.elapsed().as_millis(),
-        "Health check completed successfully"
-    );
-    
-    Ok(Json(health_info))
-}
-
-/// POST /api/colis-prive/mobile-tournee - Obtener tournée usando endpoint móvil real
-pub async fn get_mobile_tournee(
-    State(_state): State<AppState>,
-    Json(request): Json<crate::external_models::MobileTourneeRequest>,
-) -> Result<Json<crate::external_models::MobileTourneeResponse>, StatusCode> {
-    match crate::services::ColisPriveService::get_mobile_tournee(request).await {
-        Ok(response) => Ok(Json(response)),
-        Err(e) => {
-            tracing::error!("Error obteniendo tournée móvil: {}", e);
-            let error_response = crate::external_models::MobileTourneeResponse {
-                success: false,
-                data: None,
-                message: format!("Error interno del servidor: {}", e),
-                endpoint_used: "mobile".to_string(),
-                total_packages: 0,
-            };
-            Ok(Json(error_response))
-        }
-    }
-}
-
-
-/// Endpoint estructurado para app móvil con análisis de datos GPS y metadatos
-pub async fn get_mobile_tournee_structured(
-    State(state): State<AppState>,
-    Json(request): Json<MobileTourneeRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match ColisPriveService::get_mobile_tournee(request).await {
-        Ok(response) => {
-            if response.success {
-                // Crear respuesta estructurada para app móvil
-                let structured_response = create_mobile_structured_response(&response);
-                Ok(Json(structured_response))
-            } else {
-                let error_response = serde_json::json!({
-                    "success": false,
-                    "message": response.message,
-                    "data": null
-                });
-                Err((StatusCode::BAD_REQUEST, Json(error_response)))
-            }
-        },
-        Err(e) => {
-            let error_response = serde_json::json!({
-                "success": false,
-                "message": format!("Error getting mobile tournee: {}", e),
-                "data": null
-            });
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
-        }
-    }
-}
-
-/// Función para crear respuesta estructurada con análisis de datos GPS y metadatos
-fn create_mobile_structured_response(response: &MobileTourneeResponse) -> serde_json::Value {
-    let empty_vec = Vec::new();
-    let packages = response.data.as_ref().unwrap_or(&empty_vec);
-    
-    // Análisis de datos
-    let has_gps = packages.iter().any(|p| p.coord_x_gps_cpt_rendu.is_some());
-    let action_types: std::collections::HashSet<String> = packages.iter()
-        .map(|p| p.code_cle_action.clone())
-        .collect();
-    
-    // Análisis de coordenadas GPS
-    let gps_packages: Vec<&MobilePackageAction> = packages.iter()
-        .filter(|p| p.coord_x_gps_cpt_rendu.is_some() && p.coord_y_gps_cpt_rendu.is_some())
-        .collect();
-    
-    let gps_stats = if !gps_packages.is_empty() {
-        let lats: Vec<f64> = gps_packages.iter()
-            .filter_map(|p| p.coord_y_gps_cpt_rendu)
-            .collect();
-        let lngs: Vec<f64> = gps_packages.iter()
-            .filter_map(|p| p.coord_x_gps_cpt_rendu)
-            .collect();
-        
-        serde_json::json!({
-            "total_with_gps": gps_packages.len(),
-            "coverage_percentage": (gps_packages.len() as f64 / packages.len() as f64) * 100.0,
-            "bounds": {
-                "min_lat": lats.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
-                "max_lat": lats.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b)),
-                "min_lng": lngs.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
-                "max_lng": lngs.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b))
-            }
-        })
-    } else {
-        serde_json::json!({
-            "total_with_gps": 0,
-            "coverage_percentage": 0.0,
-            "bounds": null
-        })
-    };
-    
-    serde_json::json!({
-        "success": true,
-        "metadata": {
-            "total_packages": packages.len(),
-            "has_gps_coordinates": has_gps,
-            "unique_action_types": action_types.into_iter().collect::<Vec<String>>(),
-            "tournee_id": packages.first().map(|p| &p.code_tournee_mcp),
-            "agent_id": packages.first().map(|p| &p.matricule_distributeur),
-            "gps_statistics": gps_stats
-        },
-        "packages": packages.iter().map(|package| {
-            serde_json::json!({
-                // Identificadores
-                "id": package.id_article,
-                "location_id": package.id_lieu_article,
-                "reference": package.ref_externe_article,
-                "barcode": package.code_barre_article,
-                "tournee_code": package.code_tournee_mcp,
-                
-                // Acción a realizar
-                "action": {
-                    "id": package.id_action,
-                    "code": package.code_cle_action,
-                    "label": package.libelle_action,
-                    "type": package.code_type_action,
-                    "order": package.num_ordre_action,
-                    "estimated_duration_minutes": package.duree_seconde_prevue_action.map(|d| d / 60.0)
-                },
-                
-                // Ubicación (para futuro uso con Mapbox)
-                "location": if package.coord_x_gps_cpt_rendu.is_some() {
-                    serde_json::json!({
-                        "latitude": package.coord_y_gps_cpt_rendu,
-                        "longitude": package.coord_x_gps_cpt_rendu,
-                        "gps_quality_meters": package.gps_qualite,
-                        "has_coordinates": true,
-                        "coordinates_ready_for_maps": true
-                    })
-                } else {
-                    serde_json::json!({
-                        "has_coordinates": false,
-                        "coordinates_ready_for_maps": false
-                    })
-                },
-                
-                // Información temporal
-                "timing": {
-                    "recorded_at": package.horodatage_cpt_rendu,
-                    "expected_at": package.valeur_attendu_cpt_rendu,
-                    "transmitted_at": package.date_transmis_si_tiers
-                },
-                
-                // Estado
-                "status": {
-                    "transmitted_to_third_party": package.vf_transmis_si_tiers.unwrap_or(false),
-                    "order_in_route": package.num_ordre_cpt_rendu
-                },
-                
-                // Empresa emisora
-                "sender": {
-                    "code": package.code_societe_emetrice_article,
-                    "agency": package.code_agence
-                },
-                
-                // Información adicional de seguimiento
-                "tracking": {
-                    "compteur_id": package.id_cpt_rendu,
-                    "compteur_code": package.code_cle_cpt_rendu,
-                    "compteur_type": package.code_type_cpt_rendu,
-                    "compteur_value": package.valeur_cpt_rendu
-                }
-            })
-        }).collect::<Vec<_>>()
-    })
-}
-
-/// POST /api/colis-prive/refresh-token - Refresh token con Colis Privé
-pub async fn refresh_colis_prive_token(
-    State(_state): State<AppState>,
-    Json(request): Json<RefreshTokenRequest>,
-) -> Result<Json<ColisAuthResponse>, StatusCode> {
-    use tracing::{info, warn, error, debug};
-    
-    // Logging seguro - nunca logear tokens completos
-    info!(
-        endpoint = "refresh_token",
-        token_preview = %&request.token[..20.min(request.token.len())],
-        token_length = request.token.len(),
-        device_model = %request.device_info.model,
-        "Starting Colis Privé token refresh with dynamic device info"
-    );
-    
-    // Crear cliente con SSL bypass y headers exactos usando device info
-    let mut client = crate::client::ColisPriveClient::new(request.device_info.clone())
-        .map_err(|e| {
-            error!(
-                error = %e,
-                context = "client_creation",
-                "Failed to create Colis Privé client"
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    
-    // Request body exacto como especificaste (dureeTokenInHour fijo en 0)
-    let refresh_request = json!({
-        "dureeTokenInHour": 0,
-        "token": request.token
-    });
-    
-    debug!(
-        url = "https://wsauthentificationexterne.colisprive.com/api/auth/login-token",
-        body_size = refresh_request.to_string().len(),
-        device_model = %request.device_info.model,
-        "Sending refresh token request to Colis Privé"
-    );
-    
-    // Usar el método refresh_token del cliente (ya usa headers correctos)
-    match client.refresh_token(&request.token).await {
-        Ok(auth_response) => {
-            info!(
-                endpoint = "refresh_token",
-                success = true,
-                new_token_preview = %&auth_response.tokens.sso_hopps[..20.min(auth_response.tokens.sso_hopps.len())],
-                new_token_length = auth_response.tokens.sso_hopps.len(),
-                is_authentif = auth_response.is_authentif,
-                "Token refresh successful"
-            );
-            
-            // Verificar que la autenticación sea válida
-            if !auth_response.is_authentif {
-                warn!(
-                    endpoint = "refresh_token",
-                    is_authentif = false,
-                    "Refresh token returned invalid authentication"
-                );
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-            
-            Ok(Json(auth_response))
-        }
-        Err(e) => {
-            error!(
-                error = %e,
-                context = "token_refresh",
-                endpoint = "refresh_token",
-                "Token refresh failed"
-            );
-            
-            // Determinar el status code apropiado basado en el error
-            let status_code = if e.to_string().contains("401") || e.to_string().contains("Unauthorized") {
-                StatusCode::UNAUTHORIZED
-            } else if e.to_string().contains("timeout") || e.to_string().contains("Timeout") {
-                StatusCode::REQUEST_TIMEOUT
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            
-            Err(status_code)
-        }
-    }
-}
-
-/// POST /api/colis-prive/mobile-tournee-with-retry - Tournée móvil con auto-retry
-pub async fn mobile_tournee_with_retry(
-    State(_state): State<AppState>,
-    Json(request): Json<TourneeRequestWithRetry>,
-) -> Result<Json<MobileTourneeResponse>, StatusCode> {
-    use tracing::{info, warn, error, debug};
-    
-    info!(
-        endpoint = "mobile_tournee_with_retry",
-        username = %request.username,
-        matricule = %request.matricule,
-        date = %request.date,
-        has_token = request.token.is_some(),
-        device_model = %request.device_info.model,
-        "Starting mobile tournée with auto-retry using dynamic device info"
-    );
-    
-    let mut client = crate::client::ColisPriveClient::new(request.device_info.clone())
-        .map_err(|e| {
-            error!(
-                error = %e,
-                context = "client_creation",
-                endpoint = "mobile_tournee_with_retry",
-                "Failed to create Colis Privé client"
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    
-    // Extraer username sin prefix para el flujo completo
-    let username = request.matricule.split('_').last().unwrap_or(&request.matricule);
-    
-    // Si no hay token, hacer login primero
-    let token = if let Some(token) = request.token {
-        info!(
-            endpoint = "mobile_tournee_with_retry",
-            token_preview = %&token[..20.min(token.len())],
-            "Using existing token for tournée"
-        );
-        token
-    } else {
-        info!(
-            endpoint = "mobile_tournee_with_retry",
-            username = %username,
-            "No token provided, performing initial login"
-        );
-        
-        // Usar el método login existente
-        let auth_response = client.login(username, &request.password, &request.societe).await.map_err(|e| {
-            error!(
-                error = %e,
-                context = "initial_login",
-                endpoint = "mobile_tournee_with_retry",
-                username = %username,
-                "Initial login failed"
-            );
-            StatusCode::UNAUTHORIZED
-        })?;
-        
-        // Extraer token del response (LoginResponse usa tokens.SsoHopps)
-        let new_token = auth_response.tokens.SsoHopps.clone();
-        info!(
-            endpoint = "mobile_tournee_with_retry",
-            token_preview = %&new_token[..20.min(new_token.len())],
-            "Initial login successful, obtained token"
-        );
-        new_token
-    };
-    
-    // Intento 1: con token actual
-    debug!(
-        endpoint = "mobile_tournee_with_retry",
-        attempt = 1,
-        token_preview = %&token[..20.min(token.len())],
-        "Attempting tournée with current token"
-    );
-    
-    match client.get_mobile_tournee_with_token(
-        username,
-        &request.password,
-        &request.societe,
-        &request.date,
-        &token
-    ).await {
-        Ok(packages_json) => {
-            info!(
-                endpoint = "mobile_tournee_with_retry",
-                attempt = 1,
-                success = true,
-                "Tournée successful with current token"
-            );
-            
-            // Convertir Value a Vec<MobilePackageAction> si es posible
-            let packages: Vec<MobilePackageAction> = serde_json::from_value(packages_json.clone())
-                .unwrap_or_else(|_| Vec::new());
-            
-            let tournee_response = MobileTourneeResponse {
-                success: true,
-                message: "Tournée móvil obtenida exitosamente con auto-retry".to_string(),
-                data: Some(packages.clone()),
-                endpoint_used: "mobile_tournee_with_retry".to_string(),
-                total_packages: packages.len(),
-            };
-            
-            Ok(Json(tournee_response))
-        }
-        Err(e) => {
-            if e.to_string().contains("401") || e.to_string().contains("Unauthorized") || e.to_string().contains("Token expirado") {
-                warn!(
-                    endpoint = "mobile_tournee_with_retry",
-                    attempt = 1,
-                    error = %e,
-                    "Token expired, attempting refresh"
-                );
-                
-                // Intento 2: Refresh token y retry
-                debug!(
-                    endpoint = "mobile_tournee_with_retry",
-                    attempt = 2,
-                    "Starting token refresh for retry"
-                );
-                
-                // Refresh token
-                let refresh_response = client.refresh_token(&token).await.map_err(|refresh_e| {
-                    error!(
-                        error = %refresh_e,
-                        context = "token_refresh",
-                        endpoint = "mobile_tournee_with_retry",
-                        "Token refresh failed during retry"
-                    );
-                    StatusCode::UNAUTHORIZED
-                })?;
-                
-                let new_token = refresh_response.tokens.sso_hopps;
-                info!(
-                    endpoint = "mobile_tournee_with_retry",
-                    attempt = 2,
-                    new_token_preview = %&new_token[..20.min(new_token.len())],
-                    "Token refresh successful, retrying tournée"
-                );
-                
-                // Retry con nuevo token
-                match client.get_mobile_tournee_with_token(
-                    username,
-                    &request.password,
-                    &request.societe,
-                    &request.date,
-                    &new_token
-                ).await {
-                    Ok(packages_json) => {
-                        println!("✅ Tournée exitosa después de refresh");
-                        
-                        let packages: Vec<MobilePackageAction> = serde_json::from_value(packages_json.clone())
-                            .unwrap_or_else(|_| Vec::new());
-                        
-                        let tournee_response = MobileTourneeResponse {
-                            success: true,
-                            message: "Tournée móvil obtenida exitosamente después de refresh".to_string(),
-                            data: Some(packages.clone()),
-                            endpoint_used: "mobile_tournee_with_retry_refresh".to_string(),
-                            total_packages: packages.len(),
-                        };
-                        
-                        Ok(Json(tournee_response))
+            if let Some(token) = auth_response.token {
+                // Ahora usar el token para obtener la lettre de voiture
+                match get_lettre_de_voiture_web(&token, &request).await {
+                    Ok(lettre_data) => {
+                        let response = json!({
+                            "success": true,
+                            "tournee": {
+                                "matricule": request.matricule,
+                                "societe": request.societe,
+                                "lettre_de_voiture": lettre_data
+                            },
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "api_type": "web"
+                        });
+                        Ok(Json(response))
                     }
-                    Err(retry_e) => {
-                        println!("❌ Tournée falló incluso después de refresh: {}", retry_e);
-                        let error_response = MobileTourneeResponse {
-                            success: false,
-                            message: format!("Error obteniendo tournée móvil: {}", retry_e),
-                            data: None,
-                            endpoint_used: "mobile_tournee_with_retry_failed".to_string(),
-                            total_packages: 0,
-                        };
+                    Err(e) => {
+                        log::error!("❌ Error obteniendo lettre de voiture: {}", e);
+                        let error_response = json!({
+                            "success": false,
+                            "error": {
+                                "message": format!("Error obteniendo lettre de voiture: {}", e),
+                                "code": "LETTRE_ERROR"
+                            },
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
                         Ok(Json(error_response))
                     }
                 }
             } else {
-                println!("❌ Error en tournée (no es 401): {}", e);
-                let error_response = MobileTourneeResponse {
-                    success: false,
-                    message: format!("Error obteniendo tournée móvil: {}", e),
-                    data: None,
-                    endpoint_used: "mobile_tournee_with_retry_error".to_string(),
-                    total_packages: 0,
-                };
+                let error_response = json!({
+                    "success": false,
+                    "error": {
+                        "message": "No se pudo obtener el token de autenticación",
+                        "code": "TOKEN_ERROR"
+                    },
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
                 Ok(Json(error_response))
             }
         }
-    }
-}
-
-// NUEVOS ENDPOINTS: FLUJO COMPLETO DE AUTENTICACIÓN (RESUELVE EL 401)
-// ====================================================================
-
-/// POST /api/colis-prive/complete-auth-flow - Flujo completo de autenticación (RESUELVE EL 401)
-pub async fn complete_authentication_flow(
-    State(_state): State<AppState>,
-    Json(request): Json<TourneeRequestWithRetry>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    use tracing::{info, error};
-    
-    info!(
-        username = %request.username,
-        societe = %request.societe,
-        device_model = %request.device_info.model,
-        "Iniciando flujo completo de autenticación (RESUELVE EL 401)"
-    );
-
-    match ColisPriveFlowService::new() {
-        Ok(flow_service) => {
-            match flow_service.complete_authentication_flow(
-                &request.device_info,
-                &request.username,
-                &request.password,
-                &request.societe,
-                request.api_choice.as_deref() // 🆕 NUEVO: Pasar api_choice al servicio
-            ).await {
-                Ok(flow_result) => {
-                    info!(
-                        username = %request.username,
-                        "Flujo completo de autenticación ejecutado exitosamente"
-                    );
-
-                    let success_response = json!({
-                        "success": true,
-                        "message": "Flujo completo de autenticación ejecutado exitosamente",
-                        "flow_result": flow_result,
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-
-                    Ok(Json(success_response))
-                }
-                Err(e) => {
-                    error!("Error en flujo completo de autenticación: {}", e);
-                    let error_response = json!({
-                        "success": false,
-                        "error": {
-                            "message": format!("Error en flujo completo: {}", e),
-                            "code": "FLOW_FAILED"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    Ok(Json(error_response))
-                }
-            }
-        }
         Err(e) => {
-            error!("Error inicializando ColisPriveFlowService: {}", e);
+            log::error!("❌ Error de autenticación para tournée: {}", e);
             let error_response = json!({
                 "success": false,
                 "error": {
-                    "message": format!("Error interno del servidor: {}", e),
-                    "code": "SERVICE_INIT_FAILED"
+                    "message": format!("Error de autenticación: {}", e),
+                    "code": "AUTH_ERROR"
                 },
                 "timestamp": chrono::Utc::now().to_rfc3339()
             });
@@ -773,812 +232,87 @@ pub async fn complete_authentication_flow(
     }
 }
 
-/// POST /api/colis-prive/reconnect - Manejo específico de reconexión (RESUELVE EL 401)
-pub async fn handle_reconnection(
-    State(_state): State<AppState>,
-    Json(request): Json<TourneeRequestWithRetry>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    use tracing::{info, error};
+/// 🔧 FUNCIÓN AUXILIAR: Obtener lettre de voiture con headers web
+async fn get_lettre_de_voiture_web(
+    token: &str,
+    request: &GetTourneeRequest
+) -> Result<serde_json::Value, anyhow::Error> {
+    log::info!("📄 Obteniendo lettre de voiture (API Web)");
     
-    info!(
-        username = %request.username,
-        societe = %request.societe,
-        device_model = %request.device_info.model,
-        "Manejando reconexión específica (RESUELVE EL 401)"
-    );
-
-    match ColisPriveFlowService::new() {
-        Ok(flow_service) => {
-            match flow_service.handle_reconnection(
-                &request.device_info,
-                &request.username,
-                &request.password,
-                &request.societe,
-                request.api_choice.as_deref() // 🆕 NUEVO: Pasar api_choice para reconexión
-            ).await {
-                Ok(reconnection_result) => {
-                    info!(
-                        username = %request.username,
-                        "Reconexión manejada exitosamente"
-                    );
-
-                    let success_response = json!({
-                        "success": true,
-                        "message": "Reconexión manejada exitosamente (401 RESUELTO)",
-                        "reconnection_result": reconnection_result,
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-
-                    Ok(Json(success_response))
-                }
-                Err(e) => {
-                    error!("Error en reconexión: {}", e);
-                    let error_response = json!({
-                        "success": false,
-                        "error": {
-                            "message": format!("Error en reconexión: {}", e),
-                            "code": "RECONNECTION_FAILED"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    Ok(Json(error_response))
-                }
-            }
-        }
-        Err(e) => {
-            error!("Error inicializando ColisPriveFlowService: {}", e);
-            let error_response = json!({
-                "success": false,
-                "error": {
-                    "message": format!("Error interno del servidor: {}", e),
-                    "code": "SERVICE_INIT_FAILED"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-            Ok(Json(error_response))
-        }
-    }
-}
-
-
-// ====================================================================
-// NUEVOS ENDPOINTS v3.3.0.9 - FLUJO COMPLETO EXACTO DE LA APP OFICIAL
-// ====================================================================
-
-/// POST /api/colis-prive/v3/complete-flow - Flujo completo v3.3.0.9 (4 pasos)
-/// Implementa exactamente el flujo de la app oficial basado en reverse engineering
-pub async fn execute_complete_flow_v3(
-    State(_state): State<AppState>,
-    Json(request): Json<CompleteFlowRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    use tracing::{info, error};
-    
-    info!(
-        username = %request.username,
-        societe = %request.societe,
-        date = %request.date,
-        "🚀 Iniciando flujo completo v3.3.0.9 (4 pasos - RESUELVE DEFINITIVAMENTE EL 401)"
-    );
-
-    match ColisPriveCompleteFlowService::new() {
-        Ok(service) => {
-            // 🆕 NUEVO: Respetar api_choice de la app, con fallback a "mobile" para v3
-            let api_choice = request.api_choice.as_ref()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "mobile".to_string());
-            
-            info!("🎯 API Choice detectado: {} (endpoint v3)", api_choice);
-            
-            match service.execute_complete_flow(
-                request.username,
-                request.password,
-                request.societe,
-                request.date,
-                request.device_info,
-                Some(api_choice), // 🆕 NUEVO: Usar api_choice de la app
-            ).await {
-                Ok(flow_response) => {
-                    if flow_response.success {
-                        info!(
-                            total_duration = %flow_response.timing.total_duration_ms,
-                            has_tournee_data = flow_response.tournee_data.is_some(),
-                            "✅ Flujo completo v3.3.0.9 ejecutado exitosamente"
-                        );
-
-                        let success_response = json!({
-                            "success": true,
-                            "message": "Flujo completo v3.3.0.9 ejecutado exitosamente - 401 RESUELTO DEFINITIVAMENTE",
-                            "version": "3.3.0.9",
-                            "flow_response": flow_response,
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        });
-
-                        Ok(Json(success_response))
-                    } else {
-                        error!("Flujo v3.3.0.9 falló: {}", flow_response.message);
-                        let error_response = json!({
-                            "success": false,
-                            "version": "3.3.0.9",
-                            "error": {
-                                "message": flow_response.message,
-                                "code": "FLOW_V3_FAILED",
-                                "flow_state": flow_response.flow_state
-                            },
-                            "timing": flow_response.timing,
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        });
-                        Ok(Json(error_response))
-                    }
-                }
-                Err(e) => {
-                    error!("Error ejecutando flujo v3.3.0.9: {}", e);
-                    let error_response = json!({
-                        "success": false,
-                        "version": "3.3.0.9",
-                        "error": {
-                            "message": format!("Error ejecutando flujo v3.3.0.9: {}", e),
-                            "code": "FLOW_V3_EXECUTION_ERROR"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    Ok(Json(error_response))
-                }
-            }
-        }
-        Err(e) => {
-            error!("Error inicializando ColisPriveCompleteFlowService: {}", e);
-            let error_response = json!({
-                "success": false,
-                "version": "3.3.0.9",
-                "error": {
-                    "message": format!("Error interno del servidor: {}", e),
-                    "code": "SERVICE_V3_INIT_FAILED"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-            Ok(Json(error_response))
-        }
-    }
-}
-
-/// POST /api/colis-prive/v3/reconnect - Reconexión rápida con tokens existentes  
-pub async fn reconnect_with_tokens_v3(
-    State(_state): State<AppState>,
-    Json(request): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    use tracing::{info, error};
-    
-    // Extraer datos del request
-    let sso_hopps = request.get("sso_hopps")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let matricule = request.get("matricule")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let date = request.get("date")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string();
-
-    if sso_hopps.is_empty() || matricule.is_empty() || date.is_empty() {
-        let error_response = json!({
-            "success": false,
-            "version": "3.3.0.9", 
-            "error": {
-                "message": "Faltan parámetros requeridos: sso_hopps, matricule, date",
-                "code": "MISSING_PARAMETERS"
-            },
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        });
-        return Ok(Json(error_response));
-    }
-    
-    info!(
-        matricule = %matricule,
-        date = %date,
-        sso_hopps_preview = %&sso_hopps[..sso_hopps.len().min(20)],
-        "🔄 Reconexión rápida v3.3.0.9 con tokens existentes"
-    );
-
-    match ColisPriveCompleteFlowService::new() {
-        Ok(service) => {
-            match service.reconnect_with_existing_tokens(
-                sso_hopps,
-                matricule,
-                date,
-            ).await {
-                Ok(reconnect_response) => {
-                    if reconnect_response.success {
-                        info!(
-                            total_duration = %reconnect_response.timing.total_duration_ms,
-                            "✅ Reconexión v3.3.0.9 exitosa"
-                        );
-
-                        let success_response = json!({
-                            "success": true,
-                            "message": "Reconexión v3.3.0.9 exitosa - tokens válidos",
-                            "version": "3.3.0.9",
-                            "reconnect_response": reconnect_response,
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        });
-
-                        Ok(Json(success_response))
-                    } else {
-                        error!("Reconexión v3.3.0.9 falló: {}", reconnect_response.message);
-                        let error_response = json!({
-                            "success": false,
-                            "version": "3.3.0.9",
-                            "error": {
-                                "message": reconnect_response.message,
-                                "code": "RECONNECT_V3_FAILED",
-                                "suggestion": "Ejecutar flujo completo nuevamente"
-                            },
-                            "timing": reconnect_response.timing,
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        });
-                        Ok(Json(error_response))
-                    }
-                }
-                Err(e) => {
-                    error!("Error en reconexión v3.3.0.9: {}", e);
-                    let error_response = json!({
-                        "success": false,
-                        "version": "3.3.0.9",
-                        "error": {
-                            "message": format!("Error en reconexión v3.3.0.9: {}", e),
-                            "code": "RECONNECT_V3_EXECUTION_ERROR",
-                            "suggestion": "Ejecutar flujo completo nuevamente"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    Ok(Json(error_response))
-                }
-            }
-        }
-        Err(e) => {
-            error!("Error inicializando ColisPriveCompleteFlowService: {}", e);
-            let error_response = json!({
-                "success": false,
-                "version": "3.3.0.9",
-                "error": {
-                    "message": format!("Error interno del servidor: {}", e),
-                    "code": "SERVICE_V3_INIT_FAILED"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-            Ok(Json(error_response))
-        }
-    }
-}
-
-/// POST /api/colis-prive/lettre-voiture-only - Obtener lettre de voiture usando token guardado
-/// 🆕 NUEVO: Endpoint para actualizaciones rápidas sin re-autenticación
-pub async fn get_lettre_voiture_only(
-    State(_state): State<AppState>,
-    Json(request): Json<LettreVoitureOnlyRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    use crate::services::colis_prive_web_service::ColisPriveWebService;
-    use crate::models::colis_prive_web_models::LettreVoitureOnlyRequest;
-    
-    use tracing::{info, error};
-    
-    info!("📄 === LETTRE DE VOITURE SOLO ===");
-    info!("Societe: {}", request.societe);
-    info!("Matricule: {}", request.matricule);
-    info!("Date: {}", request.date);
-    info!("Token preview: {}...", &request.token[..request.token.len().min(20)]);
-    
-    // Validar parámetros requeridos
-    if request.token.is_empty() || request.matricule.is_empty() || request.date.is_empty() {
-        let error_response = json!({
-            "success": false,
-            "error": {
-                "message": "Faltan parámetros requeridos: token, matricule, date",
-                "code": "MISSING_PARAMETERS"
-            },
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        });
-        return Ok(Json(error_response));
-    }
-    
-    // Crear servicio web
-    match ColisPriveWebService::new() {
-        Ok(web_service) => {
-            // Obtener solo la lettre de voiture usando el token guardado
-            match web_service.get_letter_voiture(
-                &request.societe,
-                &request.matricule,
-                &request.date,
-                &request.token
-            ).await {
-                Ok(letter_response) => {
-                    info!("✅ Lettre de voiture obtenida exitosamente");
-                    
-                    let success_response = json!({
-                        "success": true,
-                        "data": letter_response.data,
-                        "message": letter_response.message,
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    
-                    Ok(Json(success_response))
-                }
-                Err(e) => {
-                    error!("❌ Error obteniendo lettre de voiture: {}", e);
-                    let error_response = json!({
-                        "success": false,
-                        "error": {
-                            "message": format!("Error obteniendo lettre de voiture: {}", e),
-                            "code": "LETTRE_FETCH_ERROR"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    });
-                    Ok(Json(error_response))
-                }
-            }
-        }
-        Err(e) => {
-            error!("❌ Error inicializando WebService: {}", e);
-            let error_response = json!({
-                "success": false,
-                "error": {
-                    "message": format!("Error interno del servidor: {}", e),
-                    "code": "WEBSERVICE_INIT_FAILED"
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-            Ok(Json(error_response))
-        }
-    }
-}
-
-/// Request de login directo a Colis Prive
-#[derive(Debug, Deserialize, Validate)]
-pub struct ColisPriveLoginRequest {
-    #[validate(length(min = 3))]
-    pub username: String,        // Ej: "A187518"
-    
-    #[validate(length(min = 3))]
-    pub password: String,        // Ej: "INTI7518"
-    
-    #[validate(length(min = 3))]
-    pub societe: String,         // Ej: "PCP0010699"
-    
-    #[serde(default = "default_api_choice")]
-    pub api_choice: String,      // "web" o "mobile" (para compatibilidad)
-    
-    #[serde(default)]
-    pub commun: Option<ColisPriveCommun>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ColisPriveCommun {
-    #[serde(default = "default_duree_token")]
-    pub dureeTokenInHour: i32,
-}
-
-fn default_duree_token() -> i32 {
-    24
-}
-
-fn default_api_choice() -> String {
-    "web".to_string()
-}
-
-/// Response del login de Colis Prive
-#[derive(Debug, Serialize)]
-pub struct ColisPriveLoginResponse {
-    pub success: bool,
-    pub message: String,
-    pub data: Option<ColisPriveAuthData>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ColisPriveAuthData {
-    pub token: String,
-    pub matricule: String,
-    pub societe: String,
-    pub roles: Vec<String>,
-    pub isAuthentif: bool,
-}
-
-/// Login directo a Colis Prive
-pub async fn login_colis_prive(
-    Json(request): Json<ColisPriveLoginRequest>,
-) -> AppResult<Json<ColisPriveLoginResponse>> {
-    log::info!("🚀 Login directo a Colis Prive iniciado");
-    log::info!("📋 Credenciales recibidas: username={}, societe={}, api_choice={}", 
-        request.username, request.societe, request.api_choice);
-    
-    // 🆕 NUEVO: Construir el login completo para Colis Prive
-    let login = format!("{}_{}", request.societe, request.username);
-    log::info!("🔧 Login construido para Colis Prive: {}", login);
-    
-    // Construir el payload para Colis Prive
-    let payload = json!({
-        "login": login,
-        "password": request.password,
-        "societe": request.societe,
-        "commun": {
-            "dureeTokenInHour": request.commun.map(|c| c.dureeTokenInHour).unwrap_or(24)
-        }
-    });
-    
-    log::info!("📤 Enviando a Colis Prive: {}", serde_json::to_string_pretty(&payload).unwrap());
-    
-    // Hacer la llamada a Colis Prive
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership")
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "fr-FR,fr;q=0.5")
-        .header("Cache-Control", "no-cache")
-        .header("Content-Type", "application/json")
-        .header("Origin", "https://gestiontournee.colisprive.com")
-        .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("User-Agent", "DeliveryRouting/1.0")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("❌ Error en la llamada a Colis Prive: {}", e);
-            AppError::Internal("Error de conexión con Colis Prive".to_string())
-        })?;
-    
-    // Extraer el status antes de consumir la respuesta
-    let status = response.status();
-    
-    if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        log::error!("❌ Colis Prive respondió con error: {} - {}", status, error_text);
-        return Ok(Json(ColisPriveLoginResponse {
-            success: false,
-            message: format!("Error de autenticación: {}", status),
-            data: None,
-            error: Some(error_text),
-        }));
-    }
-    
-    let response_text = response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta de Colis Prive: {}", e);
-        AppError::Internal("Error leyendo respuesta".to_string())
-    })?;
-    
-    log::info!("✅ Respuesta de Colis Prive recibida: {}", response_text);
-    
-    // Parsear la respuesta de Colis Prive
-    let colis_response: serde_json::Value = serde_json::from_str(&response_text).map_err(|e| {
-        log::error!("❌ Error parseando respuesta de Colis Prive: {}", e);
-        AppError::Internal("Error parseando respuesta".to_string())
-    })?;
-    
-    // Extraer el token SsoHopps
-    let token = colis_response
-        .get("tokens")
-        .and_then(|t| t.get("SsoHopps"))
-        .and_then(|s| s.as_str())
-        .unwrap_or("");
-    
-    let matricule = colis_response
-        .get("matricule")
-        .and_then(|m| m.as_str())
-        .unwrap_or("");
-    
-    let societe = colis_response
-        .get("societe")
-        .and_then(|s| s.as_str())
-        .unwrap_or("");
-    
-    let roles = colis_response
-        .get("roles")
-        .and_then(|r| r.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
-        .unwrap_or_default();
-    
-    let is_authentif = colis_response
-        .get("isAuthentif")
-        .and_then(|i| i.as_bool())
-        .unwrap_or(false);
-    
-    if token.is_empty() {
-        log::error!("❌ No se pudo extraer el token de la respuesta");
-        return Ok(Json(ColisPriveLoginResponse {
-            success: false,
-            message: "No se pudo obtener el token de autenticación".to_string(),
-            data: None,
-            error: Some("Token no encontrado en la respuesta".to_string()),
-        }));
-    }
-    
-    log::info!("✅ Login exitoso: matricule={}, societe={}, roles={:?}", matricule, societe, roles);
-    
-    // 🆕 NUEVO: Incluir información sobre el api_choice usado
-    let message = format!("Autenticación exitosa con Colis Prive (API: {})", request.api_choice);
-    
-    Ok(Json(ColisPriveLoginResponse {
-        success: true,
-        message,
-        data: Some(ColisPriveAuthData {
-            token: token.to_string(),
-            matricule: matricule.to_string(),
-            societe: societe.to_string(),
-            roles,
-            isAuthentif: is_authentif,
-        }),
-        error: None,
-    }))
-}
-
-/// 🆕 NUEVO: Modelos para Lettre de Voiture
-#[derive(Debug, Deserialize)]
-pub struct LettreDeVoitureRequest {
-    pub token: String,
-    pub matricule: String,
-    pub societe: String,
-    pub date: String, // YYYY-MM-DD
-}
-
-#[derive(Debug, Serialize)]
-pub struct LettreDeVoitureResponse {
-    pub success: bool,
-    pub message: String,
-    pub data: Option<LettreDeVoitureData>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct LettreDeVoitureData {
-    pub matricule: String,
-    pub societe: String,
-    pub date: String,
-    pub tournee_info: Option<TourneeInfo>,
-    pub colis_summary: ColisSummary,
-    pub lettre_content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TourneeInfo {
-    pub code_tournee: String,
-    pub statut: String,
-    pub distributeur: String,
-    pub centre: String,
-    pub point_concentration: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ColisSummary {
-    pub total_colis: i32,
-    pub colis_distribue: i32,
-    pub colis_restant: i32,
-    pub colis_premium: i32,
-    pub colis_relais: i32,
-    pub colis_casier: i32,
-}
-
-/// Función auxiliar para extraer información de tournée
-fn extract_tournee_info(dashboard_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
-    let list_bean_tournee = dashboard_data.get("listBeanTournee")?.as_array()?;
-    
-    for tournee in list_bean_tournee {
-        if let Some(code_tournee) = tournee.get("codeTournee")?.as_str() {
-            if code_tournee.contains(matricule) {
-                return Some(TourneeInfo {
-                    code_tournee: code_tournee.to_string(),
-                    statut: tournee.get("statutTournee")?.as_str().unwrap_or("").to_string(),
-                    distributeur: tournee.get("beanDistributeur")?.get("nomDistributeur")?.as_str().unwrap_or("").to_string(),
-                    centre: tournee.get("codeCentre")?.as_str().unwrap_or("").to_string(),
-                    point_concentration: tournee.get("codePointConcentration")?.as_str().unwrap_or("").to_string(),
-                });
-            }
-        }
-    }
-    None
-}
-
-/// Función auxiliar para extraer resumen de colis
-fn extract_colis_summary(dashboard_data: &serde_json::Value) -> ColisSummary {
-    let empty_json = json!({});
-    let bean_today = dashboard_data.get("beanToday").unwrap_or(&empty_json);
-    
-    ColisSummary {
-        total_colis: bean_today.get("nbColis").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        colis_distribue: bean_today.get("nbDistribue").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        colis_restant: bean_today.get("nbNonAttribue").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        colis_premium: bean_today.get("nbColisPremium").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        colis_relais: 0, // Se calcularía de listBeanTournee
-        colis_casier: 0, // Se calcularía de listBeanTournee
-    }
-}
-
-/// Función auxiliar para generar contenido del lettre
-fn generate_lettre_content(
-    request: &LettreDeVoitureRequest,
-    tournee_info: &Option<TourneeInfo>,
-    colis_summary: &ColisSummary,
-) -> String {
-    let mut content = String::new();
-    
-    content.push_str("=== LETTRE DE VOITURE ===\n");
-    content.push_str(&format!("Date: {}\n", request.date));
-    content.push_str(&format!("Matricule: {}\n", request.matricule));
-    content.push_str(&format!("Société: {}\n", request.societe));
-    content.push_str(&format!("Timestamp: {}\n\n", chrono::Utc::now().to_rfc3339()));
-    
-    if let Some(tournee) = tournee_info {
-        content.push_str("=== INFORMACIÓN DE TOURNÉE ===\n");
-        content.push_str(&format!("Code Tournée: {}\n", tournee.code_tournee));
-        content.push_str(&format!("Statut: {}\n", tournee.statut));
-        content.push_str(&format!("Distributeur: {}\n", tournee.distributeur));
-        content.push_str(&format!("Centre: {}\n", tournee.centre));
-        content.push_str(&format!("Point de Concentration: {}\n\n", tournee.point_concentration));
-    }
-    
-    content.push_str("=== RÉSUMÉ DES COLIS ===\n");
-    content.push_str(&format!("Total Colis: {}\n", colis_summary.total_colis));
-    content.push_str(&format!("Colis Distribués: {}\n", colis_summary.colis_distribue));
-    content.push_str(&format!("Colis Restants: {}\n", colis_summary.colis_restant));
-    content.push_str(&format!("Colis Premium: {}\n", colis_summary.colis_premium));
-    content.push_str(&format!("Colis Relais: {}\n", colis_summary.colis_relais));
-    content.push_str(&format!("Colis Casier: {}\n", colis_summary.colis_casier));
-    
-    content.push_str("\n=== FIN LETTRE DE VOITURE ===\n");
-    
-    content
-}
-
-/// 🆕 NUEVO: Endpoint para obtener Lettre de Voiture
-pub async fn get_lettre_de_voiture(
-    Json(request): Json<LettreDeVoitureRequest>,
-) -> AppResult<Json<LettreDeVoitureResponse>> {
-    log::info!("📋 Obteniendo Lettre de Voiture para matricule: {}", request.matricule);
-    
-    // Validar que el token no esté vacío
-    if request.token.is_empty() {
-        return Ok(Json(LettreDeVoitureResponse {
-            success: false,
-            message: "Token de autenticación requerido".to_string(),
-            data: None,
-            error: Some("Token vacío".to_string()),
-        }));
-    }
-    
-    // PASO 1: Obtener Lettre de Voiture usando el endpoint correcto
     let lettre_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
-    
     let lettre_payload = json!({
-        "enumTypeLettreVoiture": "ordreScan",
-        "beanParamsMatriculeDateDebut": {
-            "Societe": request.societe,
-            "Matricule": request.matricule,
-            "DateDebut": request.date
-        }
+        "Societe": request.societe,
+        "Matricule": request.matricule,
+        "DateDebut": chrono::Utc::now().format("%Y-%m-%dT00:00:00.000Z").to_string(),
+        "Agence": null,
+        "Concentrateur": null
     });
     
     log::info!("📤 Enviando request a: {}", lettre_url);
-    log::info!("📦 Payload: {}", serde_json::to_string_pretty(&lettre_payload).unwrap_or_default());
     
-    let lettre_response = reqwest::Client::new()
+    // 🎯 HEADERS EXACTOS DEL NAVEGADOR
+    let response = reqwest::Client::new()
         .post(lettre_url)
         .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .header("Accept-Language", "fr-FR,fr;q=0.5")
         .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
         .header("Content-Type", "application/json")
         .header("Origin", "https://gestiontournee.colisprive.com")
         .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("SsoHopps", &request.token)
-        .header("User-Agent", "DeliveryRouting/1.0")
+        .header("SsoHopps", token)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
         .json(&lettre_payload)
         .send()
         .await
         .map_err(|e| {
-            log::error!("❌ Error obteniendo lettre de voiture: {}", e);
-            AppError::Internal("Error de conexión con Colis Prive".to_string())
+            log::error!("❌ Error de conexión con Colis Privé: {}", e);
+            anyhow::anyhow!("Error de conexión: {}", e)
         })?;
     
-    if !lettre_response.status().is_success() {
-        let error_text = lettre_response.text().await.unwrap_or_default();
-        log::error!("❌ Lettre de Voiture respondió con error: {}", error_text);
-        return Ok(Json(LettreDeVoitureResponse {
-            success: false,
-            message: "Error obteniendo lettre de voiture".to_string(),
-            data: None,
-            error: Some(error_text),
-        }));
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("❌ Colis Privé respondió con error {}: {}", status, error_text);
+        anyhow::bail!("Error obteniendo lettre de voiture {}: {}", status, error_text);
     }
     
-    let lettre_text = lettre_response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta del lettre: {}", e);
-        AppError::Internal("Error leyendo respuesta del lettre".to_string())
+    let response_text = response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta: {}", e);
+        anyhow::anyhow!("Error leyendo respuesta: {}", e)
     })?;
     
-    log::info!("📥 Respuesta recibida: {}", &lettre_text[..lettre_text.len().min(200)]);
+    log::info!("📥 Respuesta recibida: {}", &response_text[..response_text.len().min(200)]);
     
-    // PASO 2: Parsear la respuesta del lettre
-    let lettre_data: serde_json::Value = serde_json::from_str(&lettre_text).map_err(|e| {
-        log::error!("❌ Error parseando lettre: {}", e);
-        AppError::Internal("Error parseando respuesta del lettre".to_string())
+    // Parsear la respuesta
+    let lettre_data: serde_json::Value = serde_json::from_str(&response_text).map_err(|e| {
+        log::error!("❌ Error parseando respuesta: {}", e);
+        anyhow::anyhow!("Error parseando respuesta: {}", e)
     })?;
     
-    // PASO 3: Extraer información del lettre
-    let tournee_info = extract_tournee_info_from_lettre(&lettre_data, &request.matricule);
-    let colis_summary = extract_colis_summary_from_lettre(&lettre_data);
+    // Verificar si hay error de autorización
+    if let Some(error_msg) = lettre_data.get("Message") {
+        if error_msg.as_str() == Some("Authorization has been denied for this request.") {
+            log::error!("❌ Error de autorización: {}", error_msg);
+            anyhow::bail!("Error de autorización: {}", error_msg);
+        }
+    }
     
-    // PASO 4: Generar contenido del lettre
-    let lettre_content = generate_lettre_content_from_response(&lettre_data, &request);
-    
-    log::info!("✅ Lettre de Voiture obtenido exitosamente para: {}", request.matricule);
-    
-    Ok(Json(LettreDeVoitureResponse {
-        success: true,
-        message: "Lettre de Voiture obtenido exitosamente".to_string(),
-        data: Some(LettreDeVoitureData {
-            matricule: request.matricule,
-            societe: request.societe,
-            date: request.date,
-            tournee_info,
-            colis_summary,
-            lettre_content,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        }),
-        error: None,
+    log::info!("✅ Lettre de voiture obtenido exitosamente");
+    Ok(lettre_data)
+}
+
+/// GET /api/colis-prive/health - Health check
+pub async fn health_check_colis_prive() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "healthy",
+        "service": "colis_prive_web_api",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "endpoints": {
+            "auth": "POST /api/colis-prive/auth",
+            "tournee": "POST /api/colis-prive/tournee",
+            "health": "GET /api/colis-prive/health"
+        }
     }))
-}
-
-/// Función auxiliar para extraer información de tournée desde el lettre
-fn extract_tournee_info_from_lettre(lettre_data: &serde_json::Value, matricule: &str) -> Option<TourneeInfo> {
-    // Intentar extraer información de tournée del response del lettre
-    // La estructura exacta dependerá de la respuesta de Colis Prive
-    
-    // Por ahora, crear información básica basada en el matricule
-    Some(TourneeInfo {
-        code_tournee: format!("TOUR_{}", matricule),
-        statut: "En cours".to_string(),
-        distributeur: "Distributeur".to_string(),
-        centre: "Centre".to_string(),
-        point_concentration: "Point de concentration".to_string(),
-    })
-}
-
-/// Función auxiliar para extraer resumen de colis desde el lettre
-fn extract_colis_summary_from_lettre(lettre_data: &serde_json::Value) -> ColisSummary {
-    // Intentar extraer información de colis del response del lettre
-    // La estructura exacta dependerá de la respuesta de Colis Prive
-    
-    // Por ahora, crear resumen básico
-    ColisSummary {
-        total_colis: 0,
-        colis_distribue: 0,
-        colis_restant: 0,
-        colis_premium: 0,
-        colis_relais: 0,
-        colis_casier: 0,
-    }
-}
-
-/// Función auxiliar para generar contenido del lettre desde la respuesta
-fn generate_lettre_content_from_response(
-    lettre_data: &serde_json::Value,
-    request: &LettreDeVoitureRequest,
-) -> String {
-    let mut content = String::new();
-    
-    content.push_str("=== LETTRE DE VOITURE ===\n");
-    content.push_str(&format!("Date: {}\n", request.date));
-    content.push_str(&format!("Matricule: {}\n", request.matricule));
-    content.push_str(&format!("Société: {}\n", request.societe));
-    content.push_str(&format!("Timestamp: {}\n\n", chrono::Utc::now().to_rfc3339()));
-    
-    // Agregar información del response del lettre
-    content.push_str("=== RÉPONSE DU LETTRE ===\n");
-    if let Some(response_str) = serde_json::to_string_pretty(lettre_data).ok() {
-        content.push_str(&format!("Response: {}\n", response_str));
-    }
-    
-    content.push_str("\n=== FIN LETTRE DE VOITURE ===\n");
-    
-    content
 }

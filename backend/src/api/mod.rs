@@ -1,12 +1,11 @@
 //! API del sistema
 //! 
-//! Este módulo contiene todos los handlers HTTP para la API REST,
+//! Este módulo contiene todos los handlers HTTP para la API Web de Colis Privé,
 //! organizados por entidad del negocio.
 
 pub mod colis_prive;
 pub mod colis_prive_router;
 
-pub use colis_prive::*;
 pub use colis_prive_router::*;
 
 use axum::Router;
