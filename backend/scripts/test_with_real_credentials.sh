@@ -60,7 +60,7 @@ make_request() {
     
     # Extraer token si es respuesta de auth
     if [ "$endpoint" = "/api/colis-prive/auth" ] && [ "$http_status" = "200" ]; then
-        token=$(echo "$response_body" | jq -r '.token // empty' 2>/dev/null)
+        token=$(echo "$response_body" | jq -r '.authentication.token // empty' 2>/dev/null)
         if [ ! -z "$token" ] && [ "$token" != "null" ]; then
             log "${GREEN}🔑 TOKEN EXTRAÍDO EXITOSAMENTE:${NC}"
             log "Token: $token"
