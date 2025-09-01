@@ -8,8 +8,8 @@ use uuid::Uuid;
 use chrono::Utc;
 
 use crate::models::colis_prive_v3_models::*;
-use crate::utils::headers::{create_colis_client, get_v3_headers};
-use crate::external_models::{DeviceInfo as ExternalDeviceInfo, MobilePackageAction}; // 🆕 NUEVO: Alias para evitar conflicto
+// use crate::utils::headers::{create_colis_client, get_v3_headers}; // Módulo headers eliminado
+// use crate::external_models::{DeviceInfo as ExternalDeviceInfo, MobilePackageAction}; // Modelos no disponibles
 
 /// Servicio para el flujo completo de autenticación Colis Privé v3.3.0.9
 /// Implementa exactamente el flujo de la app oficial basado en reverse engineering
@@ -350,7 +350,7 @@ impl ColisPriveCompleteFlowService {
             password: password.to_string(),
             societe: flow_state.app_info.societe.clone(),
             commun: crate::external_models::Commun {
-                duree_token_in_hour: 0, // Campo requerido según APK oficial
+                dureeTokenInHour: 0, // Campo requerido según APK oficial
             },
         };
 
@@ -625,15 +625,15 @@ impl ColisPriveCompleteFlowService {
                         
                         // Convertir respuesta Web a formato interno
                         let auth_data = AuthData {
-                            sso_hopps: web_response.sso_hopps.unwrap_or_else(|| "WEB_TOKEN".to_string()),
+                            sso_hopps: web_response.get("sso_hopps").and_then(|v| v.as_str()).unwrap_or("WEB_TOKEN").to_string(),
                             auth_token: Some("WEB_AUTH_TOKEN".to_string()),
                             matricule: username.clone(), // ✅ CORREGIDO: Usar username, no matricule duplicado
-                            session_id: web_response.session_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                            session_id: web_response.get("session_id").and_then(|v| v.as_str()).unwrap_or(&Uuid::new_v4().to_string()).to_string(),
                             user_info: None,
                         };
                         
                         // Crear tournée data si está disponible
-                        let tournee_data = if let Some(tournee) = web_response.tournee_data {
+                        let tournee_data = if let Some(tournee) = web_response.get("tournee_data") {
                             // Convertir paquetes web a formato v3
                             let packages_v3 = tournee.data.map(|packages| {
                                 packages.into_iter().map(|pkg| {
@@ -702,7 +702,7 @@ impl ColisPriveCompleteFlowService {
                         
                         Ok(CompleteFlowResponse {
                             success: true,
-                            message: web_response.message,
+                            message: web_response.get("message").and_then(|v| v.as_str()).unwrap_or("API Web ejecutada exitosamente").to_string(),
                             flow_state: Some(FlowStep::Ready),
                             auth_data: Some(auth_data),
                             tournee_data,

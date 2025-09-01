@@ -7,10 +7,10 @@ pub mod errors;
 pub mod validation;
 pub mod jwt;
 pub mod encoding;
-pub mod headers;
+// pub mod headers; // Módulo eliminado
 
 pub use errors::*;
 pub use validation::*;
 pub use jwt::*;
 pub use encoding::*;
-pub use headers::*;
+// pub use headers::*; // Módulo eliminado

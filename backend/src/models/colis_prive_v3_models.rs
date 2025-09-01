@@ -398,7 +398,7 @@ pub struct CompleteFlowRequest {
     pub societe: String,
     pub date: String,
     pub matricule: String,
-    pub device_info: crate::external_models::DeviceInfo, // 🆕 NUEVO: Usar ExternalDeviceInfo para compatibilidad
+    pub device_info: DeviceInfo, // 🆕 NUEVO: Usar DeviceInfo local para compatibilidad
     /// 🆕 NUEVO: Tipo de API a usar ("web" o "mobile")
     #[serde(rename = "api_choice")]
     pub api_choice: Option<String>,

@@ -1,12 +1,12 @@
 use anyhow::Result;
 use serde_json::json;
 use tracing::{info, warn, error, debug, instrument};
-use crate::external_models::{
-    DeviceInfo, DeviceAuditRequest, DeviceAuditResponse, VersionCheckRealRequest, 
-    VersionCheckRealResponse, LogMobiliteRequest, LogMobiliteResponse,
-    ColisPriveOfficialLoginRequest, ColisPriveCommun
-};
-use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client, convert_device_info_to_v3};
+// use crate::external_models::{
+//     DeviceInfo, DeviceAuditRequest, DeviceAuditResponse, VersionCheckRealRequest, 
+//     VersionCheckRealResponse, LogMobiliteRequest, LogMobiliteResponse,
+//     ColisPriveOfficialLoginRequest, ColisPriveCommun
+// }; // Modelos no disponibles
+// use crate::utils::headers::{get_colis_headers, create_audit_data, create_colis_client, convert_device_info_to_v3}; // Módulo headers eliminado
 use crate::services::colis_prive_complete_flow_service::ColisPriveCompleteFlowService; // 🆕 NUEVO: Importar el nuevo servicio
 use reqwest::Client;
 use uuid::Uuid;

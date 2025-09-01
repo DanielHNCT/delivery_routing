@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::{Utc, DateTime};
 use tracing::{info, warn, error, debug, instrument};
-use crate::external_models::{VersionCheckRequest, VersionCheckResponse, AuditInstallRequest, AuditInstallResponse, AppVersion, DeviceInfo};
+// use crate::external_models::{VersionCheckRequest, VersionCheckResponse, AuditInstallRequest, AuditInstallResponse, AppVersion, DeviceInfo}; // Modelos no disponibles
 
 pub struct AppVersionService {
     versions_dir: String,

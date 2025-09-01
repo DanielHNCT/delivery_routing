@@ -11,5 +11,6 @@ pub mod tournee;
 pub mod package;
 pub mod analytics;
 pub mod colis_prive_web_models;
+pub mod colis_prive_v3_models;
 
 
