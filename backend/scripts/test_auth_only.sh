@@ -11,7 +11,7 @@ echo "🔐 ========================================="
 echo ""
 
 # 🎯 CONFIGURACIÓN
-BASE_URL="http://localhost:8000"
+BASE_URL="http://192.168.1.9:3000"
 USERNAME="A187518"
 PASSWORD="INTI7518"
 SOCIETE="PCP0010699"

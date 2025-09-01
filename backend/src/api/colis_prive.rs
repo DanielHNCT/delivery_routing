@@ -231,6 +231,7 @@ pub async fn get_packages(
     });
 
     // 🆕 OBTENER EL TOKEN DINÁMICAMENTE DEL ESTADO DE LA APLICACIÓN
+    // request.matricule es el username, no el matricule completo
     let sso_hopps = match state.get_auth_token(&request.matricule, &societe).await {
         Some(auth_token) => {
             if auth_token.is_expired() {
