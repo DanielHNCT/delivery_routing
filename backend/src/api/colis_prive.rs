@@ -406,6 +406,27 @@ pub async fn get_tournee_data(
 
     log::info!("📤 Enviando petición tournée a: {}", tournee_url);
     log::info!("📦 Payload: {}", serde_json::to_string_pretty(&tournee_payload).unwrap_or_default());
+    
+    // 🔍 LOGGING DETALLADO DE HEADERS Y TOKEN
+    log::info!("🔑 TOKEN USADO: {}", sso_hopps);
+    log::info!("📋 HEADERS COMPLETOS:");
+    log::info!("   Accept: application/json, text/plain, */*");
+    log::info!("   Accept-Encoding: gzip, deflate, br, zstd");
+    log::info!("   Accept-Language: fr-FR,fr;q=0.5");
+    log::info!("   Cache-Control: no-cache");
+    log::info!("   Connection: keep-alive");
+    log::info!("   Content-Type: application/json");
+    log::info!("   Origin: https://gestiontournee.colisprive.com");
+    log::info!("   Referer: https://gestiontournee.colisprive.com/");
+    log::info!("   SsoHopps: {}", sso_hopps);
+    log::info!("   User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+    log::info!("   Sec-Fetch-Dest: empty");
+    log::info!("   Sec-Fetch-Mode: cors");
+    log::info!("   Sec-Fetch-Site: same-site");
+    log::info!("   Sec-GPC: 1");
+    log::info!("   sec-ch-ua: \"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"");
+    log::info!("   sec-ch-ua-mobile: ?0");
+    log::info!("   sec-ch-ua-platform: \"macOS\"");
 
     let tournee_response = reqwest::Client::new()
         .post(tournee_url)
