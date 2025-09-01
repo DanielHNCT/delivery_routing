@@ -9,4 +9,8 @@ pub mod jwt;
 pub mod encoding;
 pub mod headers;
 
-
+pub use errors::*;
+pub use validation::*;
+pub use jwt::*;
+pub use encoding::*;
+pub use headers::*;
