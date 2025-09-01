@@ -118,7 +118,10 @@ async fn authenticate_colis_prive_simple(
     log::info!("📤 Enviando autenticación a: {}", auth_url);
     log::info!("🔑 Login field: {}", login_field);
     
-    let auth_response = reqwest::Client::new()
+    let auth_response = reqwest::Client::builder()
+        .user_agent("curl/7.68.0")
+        .build()
+        .unwrap()
         .post(auth_url)
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "fr-FR,fr;q=0.5")
@@ -428,7 +431,10 @@ pub async fn get_tournee_data(
     log::info!("   sec-ch-ua-mobile: ?0");
     log::info!("   sec-ch-ua-platform: \"macOS\"");
 
-    let tournee_response = reqwest::Client::new()
+    let tournee_response = reqwest::Client::builder()
+        .user_agent("curl/7.68.0")
+        .build()
+        .unwrap()
         .post(tournee_url)
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Encoding", "gzip, deflate, br, zstd")
