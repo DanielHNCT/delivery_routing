@@ -58,16 +58,39 @@ impl AppState {
     /// Obtener token de autenticación para un usuario específico
     pub async fn get_auth_token(&self, username: &str, societe: &str) -> Option<AuthToken> {
         let key = format!("{}:{}", societe, username);
+        log::info!("🔍 Buscando token con clave: '{}'", key);
+        
         let tokens = self.auth_tokens.read().await;
-        tokens.get(&key).cloned()
+        let token_count = tokens.len();
+        log::info!("🔍 Total de tokens en estado: {}", token_count);
+        
+        // 🔍 DEBUG: Imprimir todas las claves disponibles
+        for (k, v) in tokens.iter() {
+            log::info!("🔍 Token disponible: '{}' -> username: '{}', societe: '{}'", k, v.username, v.societe);
+        }
+        
+        let result = tokens.get(&key).cloned();
+        match &result {
+            Some(token) => log::info!("✅ Token encontrado para clave '{}'", key),
+            None => log::warn!("❌ Token NO encontrado para clave '{}'", key),
+        }
+        result
     }
 
     /// Almacenar token de autenticación
     pub async fn store_auth_token(&self, username: String, societe: String, token: String, expires_in_hours: i32) {
         let key = format!("{}:{}", societe, username);
+        log::info!("💾 Almacenando token con clave: '{}' para username: '{}', societe: '{}'", key, username, societe);
+        
         let auth_token = AuthToken::new(token, username, societe, expires_in_hours);
         let mut tokens = self.auth_tokens.write().await;
-        tokens.insert(key, auth_token);
+        
+        let old_count = tokens.len();
+        tokens.insert(key.clone(), auth_token);
+        let new_count = tokens.len();
+        
+        log::info!("💾 Token almacenado. Tokens antes: {}, después: {}", old_count, new_count);
+        log::info!("💾 Token almacenado exitosamente con clave: '{}'", key);
     }
 
     /// Limpiar tokens expirados

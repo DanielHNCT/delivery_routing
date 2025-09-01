@@ -364,6 +364,8 @@ pub async fn get_tournee_data(
     log::info!("🔄 Obteniendo tournée para: {}", request.matricule);
     
     // 🆕 PASO 1: OBTENER TOKEN DEL ESTADO COMPARTIDO (AUTENTICACIÓN DINÁMICA)
+    log::info!("🔍 Buscando token para username: '{}', societe: '{}'", request.username, request.societe);
+    
     let sso_hopps = match state.get_auth_token(&request.username, &request.societe).await {
         Some(auth_token) => {
             if auth_token.is_expired() {
