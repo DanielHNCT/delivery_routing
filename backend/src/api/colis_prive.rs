@@ -358,125 +358,133 @@ pub async fn get_packages(
 
 /// POST /api/colis-prive/tournee - Obtener tournée (IMPLEMENTACIÓN COMPLETA)
 pub async fn get_tournee_data(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<GetTourneeRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     log::info!("🔄 Obteniendo tournée para: {}", request.matricule);
     
-    // ✅ IMPLEMENTACIÓN COMPLETA: API Web con petición HTTP real
-    
-    // Crear credenciales para el servicio
-    let credentials = ColisPriveAuthRequest {
-        username: request.username.clone(),
-        password: request.password.clone(),
-        societe: request.societe.clone(),
-    };
-
-    // 🔧 PASO 1: Autenticación para obtener token
-    match authenticate_colis_prive_simple(&credentials).await {
-        Ok(auth_response) => {
-            log::info!("✅ Autenticación exitosa para tournée");
-            
-            // 🔑 PASO 2: Hacer petición REAL a Colis Privé para obtener tournée
-            let tournee_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
-
-            let tournee_payload = json!({
-                "enumTypeLettreVoiture": "ordreScan",
-                "beanParamsMatriculeDateDebut": {
-                    "Societe": request.societe,
-                    "Matricule": request.matricule,
-                    "DateDebut": request.date.clone().unwrap_or_else(|| "2025-08-28".to_string())
-                }
-            });
-
-            log::info!("📤 Enviando petición tournée a: {}", tournee_url);
-            log::info!("📦 Payload: {}", serde_json::to_string_pretty(&tournee_payload).unwrap_or_default());
-
-            let tournee_response = reqwest::Client::new()
-                .post(tournee_url)
-                .header("Accept", "application/json, text/plain, */*")
-                .header("Accept-Encoding", "gzip, deflate, br, zstd")
-                .header("Accept-Language", "fr-FR,fr;q=0.5")
-                .header("Cache-Control", "no-cache")
-                .header("Connection", "keep-alive")
-                .header("Content-Type", "application/json")
-                .header("Origin", "https://gestiontournee.colisprive.com")
-                .header("Referer", "https://gestiontournee.colisprive.com/")
-                .header("SsoHopps", &auth_response.token.clone().unwrap())  // 🔑 TOKEN CRÍTICO
-                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
-                // 🔒 HEADERS DE SEGURIDAD CRÍTICOS - Agregados para compatibilidad con CURL funcional
-                .header("Sec-Fetch-Dest", "empty")
-                .header("Sec-Fetch-Mode", "cors") 
-                .header("Sec-Fetch-Site", "same-site")
-                .header("Sec-GPC", "1")
-                .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
-                .header("sec-ch-ua-mobile", "?0")
-                .header("sec-ch-ua-platform", "\"macOS\"")
-                .json(&tournee_payload)
-                .send()
-                .await
-                .map_err(|e| {
-                    log::error!("❌ Error enviando petición tournée: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-            let status = tournee_response.status();
-            if !status.is_success() {
-                let error_text = tournee_response.text().await.unwrap_or_default();
-                log::error!("❌ Error {} tournée: {}", status, error_text);
+    // 🆕 PASO 1: OBTENER TOKEN DEL ESTADO COMPARTIDO (AUTENTICACIÓN DINÁMICA)
+    let sso_hopps = match state.get_auth_token(&request.username, &request.societe).await {
+        Some(auth_token) => {
+            if auth_token.is_expired() {
+                log::warn!("⚠️ Token expirado para {}:{}, necesitamos re-autenticar", request.societe, request.username);
                 return Err(StatusCode::UNAUTHORIZED);
             }
-
-            let tournee_text = tournee_response.text().await.map_err(|e| {
-                log::error!("❌ Error leyendo respuesta tournée: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-            log::info!("📥 Respuesta tournée recibida: {} bytes", tournee_text.len());
-
-            // 🔧 PASO 3: Decodificar base64 si es necesario
-            let decoded_data = if tournee_text.starts_with('"') && tournee_text.ends_with('"') {
-                let base64_content = &tournee_text[1..tournee_text.len()-1];
-                match base64::decode(base64_content) {
-                    Ok(decoded) => {
-                        log::info!("✅ Datos decodificados de base64: {} bytes", decoded.len());
-                        String::from_utf8(decoded).unwrap_or(tournee_text)
-                    },
-                    Err(_) => {
-                        log::info!("ℹ️ No se pudo decodificar base64, usando texto original");
-                        tournee_text
-                    }
+            log::info!("✅ Usando token almacenado para {}:{}", request.societe, request.username);
+            auth_token.token
+        }
+        None => {
+            log::warn!("⚠️ No hay token almacenado para {}:{}, intentando autenticación automática", request.societe, request.username);
+            
+            // 🆕 INTENTAR AUTENTICACIÓN AUTOMÁTICA
+            match attempt_auto_auth(&state, &request.username, &request.societe).await {
+                Ok(token) => {
+                    log::info!("✅ Autenticación automática exitosa para {}:{}", request.societe, request.username);
+                    token
                 }
-            } else {
-                log::info!("ℹ️ Respuesta no es base64, usando texto original");
-                tournee_text
-            };
-
-            // 🔧 PASO 4: Respuesta final con datos reales de Colis Privé
-            let response = json!({
-                "success": true,
-                "message": "Tournée obtenida exitosamente de Colis Privé",
-                "data": decoded_data,
-                "metadata": {
-                    "matricule": request.matricule,
-                    "societe": request.societe,
-                    "date": request.date.clone().unwrap_or_else(|| "2025-08-28".to_string()),
-                    "api_type": "web",
-                    "token_used": true,
-                    "headers_sent": true,
-                    "real_request": true
-                },
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            });
-
-            log::info!("✅ Tournée obtenida exitosamente con datos reales");
-            Ok(Json(response))
+                Err(e) => {
+                    log::error!("❌ Autenticación automática falló para {}:{} - {}", request.societe, request.username, e);
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+            }
         }
-        Err(e) => {
-            log::error!("❌ Error en autenticación para tournée: {}", e);
-            Err(StatusCode::UNAUTHORIZED)
+    };
+
+    // 🆕 PASO 2: Hacer petición REAL a Colis Privé para obtener tournée
+    let tournee_url = "https://wstournee-v2.colisprive.com/WS-TourneeColis/api/getLettreVoitureEco_POST";
+
+    let tournee_payload = json!({
+        "enumTypeLettreVoiture": "ordreScan",
+        "beanParamsMatriculeDateDebut": {
+            "Societe": request.societe,
+            "Matricule": request.matricule,
+            "DateDebut": request.date.clone().unwrap_or_else(|| "2025-08-28".to_string())
         }
+    });
+
+    log::info!("📤 Enviando petición tournée a: {}", tournee_url);
+    log::info!("📦 Payload: {}", serde_json::to_string_pretty(&tournee_payload).unwrap_or_default());
+
+    let tournee_response = reqwest::Client::new()
+        .post(tournee_url)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
+        .header("Accept-Language", "fr-FR,fr;q=0.5")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Referer", "https://gestiontournee.colisprive.com/")
+        .header("SsoHopps", &sso_hopps)  // 🆕 USAR TOKEN DEL ESTADO COMPARTIDO
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
+        // 🔒 HEADERS DE SEGURIDAD CRÍTICOS - Agregados para compatibilidad con CURL funcional
+        .header("Sec-Fetch-Dest", "empty")
+        .header("Sec-Fetch-Mode", "cors") 
+        .header("Sec-Fetch-Site", "same-site")
+        .header("Sec-GPC", "1")
+        .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
+        .header("sec-ch-ua-mobile", "?0")
+        .header("sec-ch-ua-platform", "\"macOS\"")
+        .json(&tournee_payload)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Error enviando petición tournée: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let status = tournee_response.status();
+    if !status.is_success() {
+        let error_text = tournee_response.text().await.unwrap_or_default();
+        log::error!("❌ Error {} tournée: {}", status, error_text);
+        return Err(StatusCode::UNAUTHORIZED);
     }
+
+    let tournee_text = tournee_response.text().await.map_err(|e| {
+        log::error!("❌ Error leyendo respuesta tournée: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    log::info!("📥 Respuesta tournée recibida: {} bytes", tournee_text.len());
+
+    // 🔧 PASO 3: Decodificar base64 si es necesario
+    let decoded_data = if tournee_text.starts_with('"') && tournee_text.ends_with('"') {
+        let base64_content = &tournee_text[1..tournee_text.len()-1];
+        match base64::decode(base64_content) {
+            Ok(decoded) => {
+                log::info!("✅ Datos decodificados de base64: {} bytes", decoded.len());
+                String::from_utf8(decoded).unwrap_or(tournee_text)
+            },
+            Err(_) => {
+                log::info!("ℹ️ No se pudo decodificar base64, usando texto original");
+                tournee_text
+            }
+        }
+    } else {
+        log::info!("ℹ️ Respuesta no es base64, usando texto original");
+        tournee_text
+    };
+
+    // 🔧 PASO 4: Respuesta final con datos reales de Colis Privé
+    let response = json!({
+        "success": true,
+        "message": "Tournée obtenida exitosamente de Colis Privé",
+        "data": decoded_data,
+        "metadata": {
+            "matricule": request.matricule,
+            "societe": request.societe,
+            "date": request.date.clone().unwrap_or_else(|| "2025-08-28".to_string()),
+            "api_type": "web",
+            "token_used": true,
+            "headers_sent": true,
+            "real_request": true,
+            "token_source": "shared_state"  // 🆕 INDICAR QUE EL TOKEN VIENE DEL ESTADO COMPARTIDO
+        },
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+
+    log::info!("✅ Tournée obtenida exitosamente con datos reales usando token del estado compartido");
+    Ok(Json(response))
 }
 
 /// GET /api/colis-prive/health - Health check del servicio
