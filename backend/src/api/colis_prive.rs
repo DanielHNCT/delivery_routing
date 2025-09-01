@@ -123,22 +123,7 @@ async fn authenticate_colis_prive_simple(
         .build()
         .unwrap()
         .post(auth_url)
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "fr-FR,fr;q=0.5")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
         .header("Content-Type", "application/json")
-        .header("Origin", "https://gestiontournee.colisprive.com")
-        .header("Pragma", "no-cache")
-        .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("Sec-Fetch-Dest", "empty")
-        .header("Sec-Fetch-Mode", "cors")
-        .header("Sec-Fetch-Site", "same-site")
-        .header("Sec-GPC", "1")
-
-        .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
-        .header("sec-ch-ua-mobile", "?0")
-        .header("sec-ch-ua-platform", "\"macOS\"")
         .json(&auth_payload)
         .send()
         .await
@@ -412,48 +397,18 @@ pub async fn get_tournee_data(
     
     // 🔍 LOGGING DETALLADO DE HEADERS Y TOKEN
     log::info!("🔑 TOKEN USADO: {}", sso_hopps);
-    log::info!("📋 HEADERS COMPLETOS:");
-    log::info!("   Accept: application/json, text/plain, */*");
-    log::info!("   Accept-Encoding: gzip, deflate, br, zstd");
-    log::info!("   Accept-Language: fr-FR,fr;q=0.5");
-    log::info!("   Cache-Control: no-cache");
-    log::info!("   Connection: keep-alive");
+    log::info!("📋 HEADERS SIMPLIFICADOS (como curl):");
     log::info!("   Content-Type: application/json");
-    log::info!("   Origin: https://gestiontournee.colisprive.com");
-    log::info!("   Referer: https://gestiontournee.colisprive.com/");
     log::info!("   SsoHopps: {}", sso_hopps);
     log::info!("   User-Agent: curl/7.68.0");
-    log::info!("   Sec-Fetch-Dest: empty");
-    log::info!("   Sec-Fetch-Mode: cors");
-    log::info!("   Sec-Fetch-Site: same-site");
-    log::info!("   Sec-GPC: 1");
-    log::info!("   sec-ch-ua: \"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"");
-    log::info!("   sec-ch-ua-mobile: ?0");
-    log::info!("   sec-ch-ua-platform: \"macOS\"");
 
     let tournee_response = reqwest::Client::builder()
         .user_agent("curl/7.68.0")
         .build()
         .unwrap()
         .post(tournee_url)
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Encoding", "gzip, deflate, br, zstd")
-        .header("Accept-Language", "fr-FR,fr;q=0.5")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
-        .header("Content-Type", "application/json")
-        .header("Origin", "https://gestiontournee.colisprive.com")
-        .header("Referer", "https://gestiontournee.colisprive.com/")
+                .header("Content-Type", "application/json")
         .header("SsoHopps", &sso_hopps)  // 🆕 USAR TOKEN DEL ESTADO COMPARTIDO
-
-        // 🔒 HEADERS DE SEGURIDAD CRÍTICOS - Agregados para compatibilidad con CURL funcional
-        .header("Sec-Fetch-Dest", "empty")
-        .header("Sec-Fetch-Mode", "cors") 
-        .header("Sec-Fetch-Site", "same-site")
-        .header("Sec-GPC", "1")
-        .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
-        .header("sec-ch-ua-mobile", "?0")
-        .header("sec-ch-ua-platform", "\"macOS\"")
         .json(&tournee_payload)
         .send()
         .await
