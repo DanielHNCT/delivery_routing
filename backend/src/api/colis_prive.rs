@@ -88,9 +88,10 @@ async fn authenticate_colis_prive_simple(
     // 🔧 IMPLEMENTACIÓN REAL: Autenticación directa con Colis Privé
     let login_field = format!("{}_{}", credentials.societe, credentials.username);
     
-    let auth_url = "https://wsauthentificationexterne.colisprive.com/api/auth/login/COLIS";
+    let auth_url = "https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership";
+    let login_field = format!("{}_{}", credentials.societe, credentials.username);
     let auth_payload = json!({
-        "login": credentials.username,
+        "login": login_field,
         "password": credentials.password,
         "societe": credentials.societe,
         "commun": {
@@ -106,10 +107,19 @@ async fn authenticate_colis_prive_simple(
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "fr-FR,fr;q=0.5")
         .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
         .header("Content-Type", "application/json")
         .header("Origin", "https://gestiontournee.colisprive.com")
+        .header("Pragma", "no-cache")
         .header("Referer", "https://gestiontournee.colisprive.com/")
-        .header("User-Agent", "DeliveryRouting/1.0")
+        .header("Sec-Fetch-Dest", "empty")
+        .header("Sec-Fetch-Mode", "cors")
+        .header("Sec-Fetch-Site", "same-site")
+        .header("Sec-GPC", "1")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36")
+        .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
+        .header("sec-ch-ua-mobile", "?0")
+        .header("sec-ch-ua-platform", "\"macOS\"")
         .json(&auth_payload)
         .send()
         .await
