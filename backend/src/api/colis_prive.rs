@@ -88,14 +88,14 @@ async fn authenticate_colis_prive_simple(
     // 🔧 IMPLEMENTACIÓN REAL: Autenticación directa con Colis Privé
     let login_field = format!("{}_{}", credentials.societe, credentials.username);
     
-    let auth_url = "https://wsauthentificationexterne.colisprive.com/";
+    let auth_url = "https://wsauthentificationexterne.colisprive.com/api/auth/login/COLIS";
     let auth_payload = json!({
+        "login": credentials.username,
+        "password": credentials.password,
+        "societe": credentials.societe,
         "commun": {
             "dureeTokenInHour": 24
-        },
-        "login": login_field,
-        "password": credentials.password,
-        "societe": credentials.societe
+        }
     });
     
     log::info!("📤 Enviando autenticación a: {}", auth_url);

@@ -57,6 +57,12 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
     
+    // ✅ RETROFIT Y NETWORKING
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+    
     // Networking
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
