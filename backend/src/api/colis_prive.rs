@@ -18,7 +18,7 @@ use crate::{
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
 pub async fn authenticate_colis_prive(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(credentials): Json<ColisPriveAuthRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Clonar las credenciales para poder usarlas después
@@ -29,6 +29,22 @@ pub async fn authenticate_colis_prive(
     match authenticate_colis_prive_simple(&credentials).await {
         Ok(auth_response) => {
             if auth_response.success {
+                // 🆕 ALMACENAR EL TOKEN EN EL ESTADO DE LA APLICACIÓN
+                if let Some(token) = &auth_response.token {
+                    // Limpiar tokens expirados antes de almacenar uno nuevo
+                    state.cleanup_expired_tokens().await;
+                    
+                    // Almacenar el nuevo token (asumiendo 24 horas de validez)
+                    state.store_auth_token(
+                        username.clone(),
+                        societe.clone(),
+                        token.clone(),
+                        24
+                    ).await;
+                    
+                    log::info!("✅ Token almacenado en el estado de la aplicación para {}:{}", societe, username);
+                }
+                
                 let auth_response = json!({
                     "success": true,
                     "authentication": {
@@ -215,9 +231,32 @@ pub async fn get_packages(
         "DateDebut": date
     });
 
-    // Obtener el token SsoHopps del estado (asumiendo que está almacenado)
-    // Por ahora usaremos un token hardcodeado para pruebas
-    let sso_hopps = "Xal5G2w1CDR1AMe6uElQw18aahWdEPIjTqhiuchspuJleldVlOVVDj3HV3sFdN5aseUqYb5Qu0cE2r7BjiNkLyiXCIPioEx22ULOOytcta5pKjkTK+Yj8k3YppqJv/PpWA+e93LN+hAHwmRL7Kbn9JjEOt6TTwPTqkS7CMdFen58x0Vi/1HbYy+bmPryZ1zDq5nVbMi5FNKoy4zrIxIadOE1+mxdpMcUetqewWKNaErHpO/gnpCNKBLsNVDtbpHLyrAl/JqX5Wl0Poe9VHrFDrRVFkJFhO7GBAs09KOJOXoCetDDNUESuLARkAWvbWNeXdeizEimnocsokevIkn9U9X8cM4rUqgRrBh9XdLzC04=";
+    // 🆕 OBTENER EL TOKEN DINÁMICAMENTE DEL ESTADO DE LA APLICACIÓN
+    let sso_hopps = match state.get_auth_token(&request.matricule, &societe).await {
+        Some(auth_token) => {
+            if auth_token.is_expired() {
+                log::warn!("⚠️ Token expirado para {}:{}, necesitamos re-autenticar", societe, request.matricule);
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+            log::info!("✅ Usando token almacenado para {}:{}", societe, request.matricule);
+            auth_token.token
+        }
+        None => {
+            log::warn!("⚠️ No hay token almacenado para {}:{}, intentando autenticación automática", societe, request.matricule);
+            
+            // 🆕 INTENTAR AUTENTICACIÓN AUTOMÁTICA
+            match attempt_auto_auth(&state, &request.matricule, &societe).await {
+                Ok(token) => {
+                    log::info!("✅ Autenticación automática exitosa para {}:{}", societe, request.matricule);
+                    token
+                }
+                Err(e) => {
+                    log::error!("❌ Autenticación automática falló para {}:{} - {}", societe, request.matricule, e);
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+            }
+        }
+    };
 
     let tournee_response = state
         .http_client
@@ -481,6 +520,58 @@ pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, Statu
     );
     
     Ok(Json(health_info))
+}
+
+// ====================================================================
+// FUNCIONES DE AUTENTICACIÓN AUTOMÁTICA
+// ====================================================================
+
+/// 🆕 FUNCIÓN DE AUTENTICACIÓN AUTOMÁTICA
+/// Intenta autenticar automáticamente cuando no hay token disponible
+async fn attempt_auto_auth(
+    state: &AppState,
+    username: &str,
+    societe: &str,
+) -> Result<String, anyhow::Error> {
+    use crate::services::colis_prive_service::ColisPriveAuthRequest;
+    
+    log::info!("🔄 Intentando autenticación automática para {}:{}", societe, username);
+    
+    // 🔑 CREDENCIALES PREDEFINIDAS PARA AUTENTICACIÓN AUTOMÁTICA
+    // En producción, esto debería venir de variables de entorno o configuración segura
+    let credentials = ColisPriveAuthRequest {
+        username: username.to_string(),
+        password: "INTI7518".to_string(), // ⚠️ En producción, usar configuración segura
+        societe: societe.to_string(),
+    };
+    
+    // Intentar autenticación
+    match authenticate_colis_prive_simple(&credentials).await {
+        Ok(auth_response) => {
+            if auth_response.success {
+                if let Some(token) = auth_response.token {
+                    // Almacenar el token en el estado
+                    state.store_auth_token(
+                        username.to_string(),
+                        societe.to_string(),
+                        token.clone(),
+                        24
+                    ).await;
+                    
+                    log::info!("✅ Autenticación automática exitosa para {}:{}", societe, username);
+                    Ok(token)
+                } else {
+                    anyhow::bail!("Token no recibido en la respuesta de autenticación")
+                }
+            } else {
+                anyhow::bail!("Autenticación automática falló: {}", auth_response.message)
+            }
+        }
+        Err(e) => {
+            log::error!("❌ Error en autenticación automática: {}", e);
+            Err(e)
+        }
+    }
 }
 
 // ====================================================================
