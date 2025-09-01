@@ -120,6 +120,7 @@ async fn authenticate_colis_prive_simple(
     
     let auth_response = reqwest::Client::builder()
         .user_agent("curl/7.68.0")
+        .no_proxy()
         .build()
         .unwrap()
         .post(auth_url)
@@ -402,12 +403,13 @@ pub async fn get_tournee_data(
     log::info!("   SsoHopps: {}", sso_hopps);
     log::info!("   User-Agent: curl/7.68.0");
 
-    let tournee_response = reqwest::Client::builder()
+        let tournee_response = reqwest::Client::builder()
         .user_agent("curl/7.68.0")
+        .no_proxy()
         .build()
         .unwrap()
         .post(tournee_url)
-                .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json")
         .header("SsoHopps", &sso_hopps)  // 🆕 USAR TOKEN DEL ESTADO COMPARTIDO
         .json(&tournee_payload)
         .send()
