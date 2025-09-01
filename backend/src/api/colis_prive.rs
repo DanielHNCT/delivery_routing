@@ -211,6 +211,8 @@ pub async fn get_packages(
     use tracing::{info, error};
     use crate::services::{GetPackagesResponse, PackageData};
 
+    log::info!("🔥 FUNCIÓN GET_PACKAGES INICIADA");
+    info!("🚀 ENDPOINT GET_PACKAGES LLAMADO - matricule: {}", request.matricule);
     info!("📦 Obteniendo paquetes para matricule: {}", request.matricule);
 
     // Construir el matricule completo (societe + username)
