@@ -192,7 +192,7 @@ async fn authenticate_colis_prive_simple(
 pub async fn get_packages(
     State(_state): State<AppState>,
     Json(request): Json<GetPackagesRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<crate::services::GetPackagesResponse>, StatusCode> {
     log::info!("📦 Obteniendo paquetes para matricule: {}", request.matricule);
     
     // Por ahora, devolvemos datos de ejemplo
@@ -230,14 +230,45 @@ pub async fn get_packages(
         })
     ];
     
-    let response = serde_json::json!({
-        "success": true,
-        "message": "Paquetes obtenidos exitosamente",
-        "packages": mock_packages,
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
+    let response = crate::services::GetPackagesResponse {
+        success: true,
+        message: "Paquetes obtenidos exitosamente".to_string(),
+        packages: Some(vec![
+            crate::services::PackageData {
+                id: "PKG001".to_string(),
+                tracking_number: "CP123456789FR".to_string(),
+                recipient_name: "Juan Pérez".to_string(),
+                address: "Calle Mayor 123, Madrid".to_string(),
+                status: "Pendiente".to_string(),
+                instructions: "Dejar en portería".to_string(),
+                phone: "+34612345678".to_string(),
+                priority: "Normal".to_string(),
+            },
+            crate::services::PackageData {
+                id: "PKG002".to_string(),
+                tracking_number: "CP987654321FR".to_string(),
+                recipient_name: "María García".to_string(),
+                address: "Avenida de la Paz 45, Barcelona".to_string(),
+                status: "Pendiente".to_string(),
+                instructions: "Llamar antes de entregar".to_string(),
+                phone: "+34687654321".to_string(),
+                priority: "Alta".to_string(),
+            },
+            crate::services::PackageData {
+                id: "PKG003".to_string(),
+                tracking_number: "CP555666777FR".to_string(),
+                recipient_name: "Carlos López".to_string(),
+                address: "Plaza España 12, Valencia".to_string(),
+                status: "Entregado".to_string(),
+                instructions: "".to_string(),
+                phone: "+34655566677".to_string(),
+                priority: "Normal".to_string(),
+            }
+        ]),
+        error: None,
+    };
     
-    log::info!("✅ Paquetes obtenidos: {} paquetes", mock_packages.len());
+    log::info!("✅ Paquetes obtenidos: {} paquetes", 3);
     Ok(Json(response))
 }
 

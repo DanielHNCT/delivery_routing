@@ -37,3 +37,32 @@ pub struct GetPackagesRequest {
     pub matricule: String,
     pub date: Option<String>, // Campo opcional para fecha
 }
+
+/// Datos de un paquete
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageData {
+    pub id: String,
+    pub tracking_number: String,
+    pub recipient_name: String,
+    pub address: String,
+    pub status: String,
+    pub instructions: String,
+    pub phone: String,
+    pub priority: String,
+}
+
+/// Datos de error
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorData {
+    pub code: String,
+    pub message: String,
+}
+
+/// Response para obtener paquetes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPackagesResponse {
+    pub success: bool,
+    pub message: String,
+    pub packages: Option<Vec<PackageData>>,
+    pub error: Option<ErrorData>,
+}
