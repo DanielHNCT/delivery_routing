@@ -155,13 +155,20 @@ async fn authenticate_colis_prive_simple(
         }
     }
     
-    // 🔍 BUSCAR EL TOKEN EN DIFERENTES CAMPOS POSIBLES
+    // 🔍 BUSCAR EL TOKEN EN DIFERENTES CAMPOS POSIBLES (incluyendo campos anidados)
     let sso_hopps = auth_data.get("SsoHopps")
         .or_else(|| auth_data.get("ssoHopps"))
         .or_else(|| auth_data.get("token"))
         .or_else(|| auth_data.get("Token"))
         .or_else(|| auth_data.get("access_token"))
         .or_else(|| auth_data.get("accessToken"))
+        .or_else(|| auth_data.get("tokens").and_then(|t| t.get("SsoHopps")))
+        .or_else(|| auth_data.get("shortToken").and_then(|t| t.get("SsoHopps")))
+        .or_else(|| auth_data.get("habilitationAD")
+            .and_then(|h| h.get("SsoHopps"))
+            .and_then(|s| s.as_array())
+            .and_then(|arr| arr.get(0))
+            .and_then(|item| item.get("valeur")))
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             log::error!("❌ Token no encontrado en ningún campo. Campos disponibles: {:?}", 
