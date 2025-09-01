@@ -203,6 +203,16 @@ async fn authenticate_colis_prive_simple(
     Ok(auth_response)
 }
 
+/// GET /api/colis-prive/packages-test - Test simple para verificar endpoint
+pub async fn test_packages_endpoint() -> Result<Json<serde_json::Value>, StatusCode> {
+    log::info!("🔥 TEST ENDPOINT LLAMADO");
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Test endpoint funcionando",
+        "timestamp": chrono::Utc::now()
+    })))
+}
+
 /// POST /api/colis-prive/packages - Obtener paquetes desde Colis Privé (IMPLEMENTACIÓN REAL)
 pub async fn get_packages(
     State(state): State<AppState>,
