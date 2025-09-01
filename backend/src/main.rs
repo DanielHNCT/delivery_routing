@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
         .route("/test", get(test_endpoint))
         .route("/api/colis-prive/health", get(api::colis_prive::health_check_colis_prive))
         .route("/api/colis-prive/auth", post(api::colis_prive::authenticate_colis_prive))
+        .route("/api/colis-prive/packages", post(api::colis_prive::get_packages))
         .route("/api/colis-prive/tournee", post(api::colis_prive::get_tournee_data))
         .route("/api/migration/status", get(migration::api::get_migration_status))
         .route("/api/migration/strategy", post(migration::api::change_migration_strategy))
@@ -90,6 +91,7 @@ async fn main() -> Result<()> {
     info!("   GET  /test - Endpoint de prueba");
     info!("   GET  /api/colis-prive/health - Health check Colis Privé");
     info!("   POST /api/colis-prive/auth - Autenticación Colis Privé");
+    info!("   POST /api/colis-prive/packages - Obtener paquetes");
     info!("   POST /api/colis-prive/tournee - Tournée Colis Privé (API Web)");
     info!("   GET  /api/migration/status - Estado de migración");
     info!("   POST /api/migration/strategy - Cambiar estrategia");

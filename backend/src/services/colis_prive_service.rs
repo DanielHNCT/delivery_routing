@@ -30,3 +30,10 @@ pub struct GetTourneeRequest {
     pub matricule: String,
     pub date: Option<String>, // Campo opcional para fecha
 }
+
+/// Request para obtener paquetes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPackagesRequest {
+    pub matricule: String,
+    pub date: Option<String>, // Campo opcional para fecha
+}

@@ -13,7 +13,7 @@ use log;
 use reqwest;
 use crate::{
     state::AppState,
-    services::colis_prive_service::{ColisPriveAuthRequest, GetTourneeRequest, ColisPriveAuthResponse},
+    services::colis_prive_service::{ColisPriveAuthRequest, GetTourneeRequest, GetPackagesRequest, ColisPriveAuthResponse},
 };
 
 /// POST /api/colis-prive/auth - Autenticar con Colis Privé
@@ -186,6 +186,59 @@ async fn authenticate_colis_prive_simple(
     };
     
     Ok(auth_response)
+}
+
+/// POST /api/colis-prive/packages - Obtener paquetes (NUEVO ENDPOINT)
+pub async fn get_packages(
+    State(_state): State<AppState>,
+    Json(request): Json<GetPackagesRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    log::info!("📦 Obteniendo paquetes para matricule: {}", request.matricule);
+    
+    // Por ahora, devolvemos datos de ejemplo
+    // TODO: Implementar llamada real a Colis Privé para obtener paquetes
+    let mock_packages = vec![
+        serde_json::json!({
+            "id": "PKG001",
+            "tracking_number": "CP123456789FR",
+            "recipient_name": "Juan Pérez",
+            "address": "Calle Mayor 123, Madrid",
+            "status": "Pendiente",
+            "instructions": "Dejar en portería",
+            "phone": "+34612345678",
+            "priority": "Normal"
+        }),
+        serde_json::json!({
+            "id": "PKG002", 
+            "tracking_number": "CP987654321FR",
+            "recipient_name": "María García",
+            "address": "Avenida de la Paz 45, Barcelona",
+            "status": "Pendiente",
+            "instructions": "Llamar antes de entregar",
+            "phone": "+34687654321",
+            "priority": "Alta"
+        }),
+        serde_json::json!({
+            "id": "PKG003",
+            "tracking_number": "CP555666777FR", 
+            "recipient_name": "Carlos López",
+            "address": "Plaza España 12, Valencia",
+            "status": "Entregado",
+            "instructions": "",
+            "phone": "+34655566677",
+            "priority": "Normal"
+        })
+    ];
+    
+    let response = serde_json::json!({
+        "success": true,
+        "message": "Paquetes obtenidos exitosamente",
+        "packages": mock_packages,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+    
+    log::info!("✅ Paquetes obtenidos: {} paquetes", mock_packages.len());
+    Ok(Json(response))
 }
 
 /// POST /api/colis-prive/tournee - Obtener tournée (IMPLEMENTACIÓN COMPLETA)

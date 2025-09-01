@@ -14,14 +14,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
 import com.daniel.deliveryrouting.data.repository.BackendRepository
+import com.daniel.deliveryrouting.data.api.models.AuthData
+import com.daniel.deliveryrouting.data.api.models.LoginResponse
+import com.daniel.deliveryrouting.data.api.models.PackageData
+import com.daniel.deliveryrouting.presentation.packages.PackagesScreen
 import com.daniel.deliveryrouting.ui.theme.DeliveryRoutingTheme
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : ComponentActivity() {
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         setContent {
             DeliveryRoutingTheme {
                 Surface(
@@ -35,6 +39,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+data class LoginSuccessData(
+    val username: String,
+    val matricule: String,
+    val token: String
+)
+
 @Composable
 fun LoginApp() {
     var isLoggedIn by remember { mutableStateOf(false) }
@@ -45,21 +55,63 @@ fun LoginApp() {
     var errorMessage by remember { mutableStateOf("") }
     var loginData by remember { mutableStateOf<LoginSuccessData?>(null) }
     
+    // Estados para la pantalla de paquetes
+    var packages by remember { mutableStateOf<List<PackageData>>(emptyList()) }
+    var isLoadingPackages by remember { mutableStateOf(false) }
+    var packagesError by remember { mutableStateOf("") }
+
     val context = LocalContext.current
     val repository = remember { BackendRepository(context) }
     val scope = rememberCoroutineScope()
-    
+
+    // Función para cargar paquetes
+    val loadPackages: () -> Unit = {
+        scope.launch {
+            isLoadingPackages = true
+            packagesError = ""
+            
+            try {
+                val result = repository.getPackages(loginData?.matricule ?: "")
+                
+                result.fold(
+                    onSuccess = { response ->
+                        if (response.success) {
+                            packages = response.packages ?: emptyList()
+                        } else {
+                            packagesError = response.error?.message ?: "Error obteniendo paquetes"
+                        }
+                    },
+                    onFailure = { error ->
+                        packagesError = "Error de conexión: ${error.message}"
+                    }
+                )
+            } catch (e: Exception) {
+                packagesError = "Error inesperado: ${e.message}"
+            } finally {
+                isLoadingPackages = false
+            }
+        }
+    }
+
     if (isLoggedIn && loginData != null) {
-        // ✅ PANTALLA DE ÉXITO
-        SuccessScreen(
-            username = loginData!!.username,
-            matricule = loginData!!.matricule,
+        // ✅ PANTALLA DE PAQUETES
+        PackagesScreen(
+            packages = packages,
+            isLoading = isLoadingPackages,
+            onRefresh = loadPackages,
             onLogout = {
                 isLoggedIn = false
                 loginData = null
+                packages = emptyList()
                 errorMessage = ""
+                packagesError = ""
             }
         )
+        
+        // Cargar paquetes automáticamente al entrar
+        LaunchedEffect(loginData) {
+            loadPackages()
+        }
     } else {
         // ✅ PANTALLA DE LOGIN
         LoginScreen(
@@ -74,17 +126,18 @@ fun LoginApp() {
                 scope.launch {
                     isLoading = true
                     errorMessage = ""
-                    
+
                     try {
                         // ✅ LLAMADA REAL AL BACKEND
                         val result = repository.login(username, password, societe)
-                        
+
                         result.fold(
                             onSuccess = { loginResponse ->
                                 if (loginResponse.success) {
                                     val fullUsername = "${societe}_${username}"
                                     val matricule = loginResponse.authentication?.matricule ?: fullUsername
-                                    loginData = LoginSuccessData(fullUsername, matricule)
+                                    val token = loginResponse.authentication?.token ?: ""
+                                    loginData = LoginSuccessData(fullUsername, matricule, token)
                                     isLoggedIn = true
                                 } else {
                                     errorMessage = loginResponse.error?.message ?: "Error en el login"
@@ -124,127 +177,65 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "🔐 Login",
+            text = "Delivery Routing Login",
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.primary
         )
-        
+
         Spacer(modifier = Modifier.height(32.dp))
-        
+
         OutlinedTextField(
             value = username,
             onValueChange = onUsernameChange,
             label = { Text("Usuario") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         OutlinedTextField(
             value = password,
             onValueChange = onPasswordChange,
             label = { Text("Contraseña") },
-            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         OutlinedTextField(
             value = societe,
-            onValueChange = { },
+            onValueChange = { /* No editable */ },
             label = { Text("Sociedad") },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = false  // Hardcodeada por ahora
+            singleLine = true,
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth()
         )
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         if (isLoading) {
             CircularProgressIndicator()
-        } else if (errorMessage.isNotEmpty()) {
+        } else {
+            Button(
+                onClick = onLoginClick,
+                enabled = username.isNotBlank() && password.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Iniciar Sesión")
+            }
+        }
+
+        if (errorMessage.isNotBlank()) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "❌ $errorMessage",
+                text = errorMessage,
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium
             )
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        
-        Button(
-            onClick = onLoginClick,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading
-        ) {
-            Text("Iniciar Sesión")
         }
     }
 }
-
-@Composable
-fun SuccessScreen(
-    username: String,
-    matricule: String,
-    onLogout: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "✅ Login Exitoso",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Usuario: $username",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = "Matrícula: $matricule",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = "Estado: Autenticado",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Button(
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Cerrar Sesión")
-        }
-    }
-}
-
-data class LoginSuccessData(
-    val username: String,
-    val matricule: String
-)

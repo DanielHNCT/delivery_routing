@@ -5,6 +5,9 @@ import android.util.Log
 import com.daniel.deliveryrouting.data.api.BackendApi
 import com.daniel.deliveryrouting.data.api.models.LoginRequest
 import com.daniel.deliveryrouting.data.api.models.LoginResponse
+import com.daniel.deliveryrouting.data.api.models.GetPackagesRequest
+import com.daniel.deliveryrouting.data.api.models.GetPackagesResponse
+import com.daniel.deliveryrouting.data.api.models.PackageData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -65,6 +68,34 @@ class BackendRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Excepción en login: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getPackages(
+        matricule: String,
+        date: String? = null
+    ): Result<GetPackagesResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📦 Obteniendo paquetes para matricule: $matricule")
+            
+            val request = GetPackagesRequest(
+                matricule = matricule,
+                date = date
+            )
+
+            val response = api.getPackages(request)
+
+            if (response.isSuccessful && response.body() != null) {
+                Log.d(TAG, "🎉 Paquetes obtenidos exitosamente: ${response.body()?.packages?.size ?: 0} paquetes")
+                Result.success(response.body()!!)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "Error desconocido"
+                Log.e(TAG, "❌ Error obteniendo paquetes: ${response.code()} - $errorBody")
+                Result.failure(Exception("Error ${response.code()}: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Excepción obteniendo paquetes: ${e.message}", e)
             Result.failure(e)
         }
     }
