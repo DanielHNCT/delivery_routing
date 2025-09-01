@@ -293,13 +293,71 @@ pub async fn get_packages(
     }
 
     let response_str = String::from_utf8_lossy(&curl_output.stdout);
-    log::info!("📥 Respuesta: {}", response_str);
+    log::info!("📥 Respuesta recibida: {} bytes", response_str.len());
 
-    // Respuesta simple por ahora
+    // Parsear la respuesta JSON de Colis Privé
+    let tournee_data: serde_json::Value = serde_json::from_str(&response_str)
+        .map_err(|e| {
+            log::error!("❌ Error parseando respuesta JSON: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Extraer paquetes de LstLieuArticle
+    let packages = if let Some(lst_lieu_article) = tournee_data.get("LstLieuArticle") {
+        if let Some(packages_array) = lst_lieu_article.as_array() {
+            packages_array
+                .iter()
+                .filter_map(|package| {
+                    // Solo procesar paquetes de tipo COLIS
+                    if package.get("metier")?.as_str() == Some("COLIS") {
+                        Some(PackageData {
+                            id: package.get("idArticle")?.as_str()?.to_string(),
+                            tracking_number: package.get("refExterneArticle")?.as_str()?.to_string(),
+                            recipient_name: package.get("nomDestinataire")?.as_str()?.to_string(),
+                            address: format!(
+                                "{}, {} {}",
+                                package.get("LibelleVoieOrigineDestinataire")?.as_str()?,
+                                package.get("codePostalOrigineDestinataire")?.as_str()?,
+                                package.get("LibelleLocaliteOrigineDestinataire")?.as_str()?
+                            ),
+                            status: package.get("codeStatutArticle")?.as_str()?.to_string(),
+                            instructions: package.get("PreferenceLivraison")?.as_str()?.to_string(),
+                            phone: package.get("telephoneMobileDestinataire")?.as_str()?.to_string(),
+                            priority: package.get("priorite")?.as_u64()?.to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    log::info!("📦 Paquetes extraídos: {} paquetes", packages.len());
+
+    // Si no hay paquetes, verificar si es una tournée completada
+    if packages.is_empty() {
+        if let Some(infos_tournee) = tournee_data.get("InfosTournee") {
+            let code_tournee = infos_tournee.get("codeTourneeDistribution")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Desconocida");
+            return Ok(Json(GetPackagesResponse {
+                success: true,
+                message: format!("Tournée {} completada - No hay paquetes pendientes", code_tournee),
+                packages: None,
+                error: None,
+            }));
+        }
+    }
+
     Ok(Json(GetPackagesResponse {
         success: true,
-        message: format!("Curl ejecutado exitosamente - {} bytes", response_str.len()),
-        packages: None,
+        message: format!("Paquetes obtenidos exitosamente - {} paquetes", packages.len()),
+        packages: Some(packages),
         error: None,
     }))
 }
@@ -454,6 +512,7 @@ pub async fn health_check() -> Json<serde_json::Value> {
 /// GET /api/colis-prive/health - Health check de Colis Privé
 pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, StatusCode> {
     use tracing::info;
+    use crate::services::PackageData;
     
     info!(
         endpoint = "health_check",
