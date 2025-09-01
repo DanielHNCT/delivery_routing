@@ -118,31 +118,41 @@ async fn authenticate_colis_prive_simple(
     log::info!("📤 Enviando autenticación a: {}", auth_url);
     log::info!("🔑 Login field: {}", login_field);
     
-    let auth_response = reqwest::Client::builder()
-        .user_agent("curl/7.68.0")
-        .no_proxy()
-        .build()
-        .unwrap()
-        .post(auth_url)
-        .header("Content-Type", "application/json")
-        .json(&auth_payload)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("❌ Error de conexión con Colis Privé: {}", e);
-            anyhow::anyhow!("Error de conexión: {}", e)
-        })?;
-    
-    if !auth_response.status().is_success() {
-        let error_text = auth_response.text().await.unwrap_or_default();
-        log::error!("❌ Colis Privé respondió con error: {}", error_text);
-        anyhow::bail!("Error de autenticación: {}", error_text);
-    }
-    
-    let auth_text = auth_response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta de autenticación: {}", e);
-        anyhow::anyhow!("Error leyendo respuesta: {}", e)
+    // 🆕 USAR CURL DIRECTAMENTE PARA AUTENTICACIÓN
+    let auth_payload_str = serde_json::to_string(&auth_payload).map_err(|e| {
+        log::error!("❌ Error serializando payload de autenticación: {}", e);
+        anyhow::anyhow!("Error serializando payload: {}", e)
     })?;
+    
+    let curl_output = std::process::Command::new("curl")
+        .arg("-X")
+        .arg("POST")
+        .arg(auth_url)
+        .arg("-H")
+        .arg("Content-Type: application/json")
+        .arg("-d")
+        .arg(&auth_payload_str)
+        .arg("--max-time")
+        .arg("30")
+        .arg("--silent")
+        .arg("--show-error")
+        .output()
+        .map_err(|e| {
+            log::error!("❌ Error ejecutando curl para autenticación: {}", e);
+            anyhow::anyhow!("Error ejecutando curl: {}", e)
+        })?;
+
+    if !curl_output.status.success() {
+        let error_msg = String::from_utf8_lossy(&curl_output.stderr);
+        log::error!("❌ Curl falló en autenticación: {}", error_msg);
+        anyhow::bail!("Curl falló: {}", error_msg);
+    }
+
+    let response_body = String::from_utf8_lossy(&curl_output.stdout);
+    log::info!("📥 Respuesta de autenticación curl: {}", response_body);
+    
+        // 🆕 PARSEAR RESPUESTA DE AUTENTICACIÓN CURL
+    let auth_text = response_body.to_string();
     
     log::info!("📥 Respuesta de autenticación recibida: {}", &auth_text[..auth_text.len().min(200)]);
     
@@ -403,33 +413,43 @@ pub async fn get_tournee_data(
     log::info!("   SsoHopps: {}", sso_hopps);
     log::info!("   User-Agent: curl/7.68.0");
 
-        let tournee_response = reqwest::Client::builder()
-        .user_agent("curl/7.68.0")
-        .no_proxy()
-        .build()
-        .unwrap()
-        .post(tournee_url)
-        .header("Content-Type", "application/json")
-        .header("SsoHopps", &sso_hopps)  // 🆕 USAR TOKEN DEL ESTADO COMPARTIDO
-        .json(&tournee_payload)
-        .send()
-        .await
+        // 🆕 USAR CURL DIRECTAMENTE EN LUGAR DE REQWEST
+    let payload_str = serde_json::to_string(&tournee_payload).map_err(|e| {
+        log::error!("❌ Error serializando payload: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    
+    let curl_output = std::process::Command::new("curl")
+        .arg("-X")
+        .arg("POST")
+        .arg(tournee_url)
+        .arg("-H")
+        .arg("Content-Type: application/json")
+        .arg("-H")
+        .arg(format!("SsoHopps: {}", sso_hopps))
+        .arg("-d")
+        .arg(&payload_str)
+        .arg("--max-time")
+        .arg("30")
+        .arg("--silent")
+        .arg("--show-error")
+        .output()
         .map_err(|e| {
-            log::error!("❌ Error enviando petición tournée: {}", e);
+            log::error!("❌ Error ejecutando curl: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let status = tournee_response.status();
-    if !status.is_success() {
-        let error_text = tournee_response.text().await.unwrap_or_default();
-        log::error!("❌ Error {} tournée: {}", status, error_text);
-        return Err(StatusCode::UNAUTHORIZED);
+    if !curl_output.status.success() {
+        let error_msg = String::from_utf8_lossy(&curl_output.stderr);
+        log::error!("❌ Curl falló: {}", error_msg);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    let tournee_text = tournee_response.text().await.map_err(|e| {
-        log::error!("❌ Error leyendo respuesta tournée: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let response_body = String::from_utf8_lossy(&curl_output.stdout);
+    log::info!("📥 Respuesta de curl: {}", response_body);
+
+    // 🆕 PARSEAR RESPUESTA DE CURL
+    let tournee_text = response_body.to_string();
 
     log::info!("📥 Respuesta tournée recibida: {} bytes", tournee_text.len());
 
