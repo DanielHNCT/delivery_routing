@@ -209,7 +209,7 @@ pub async fn get_packages(
     Json(request): Json<GetPackagesRequest>,
 ) -> Result<Json<crate::services::GetPackagesResponse>, StatusCode> {
     use tracing::{info, error};
-    use crate::services::colis_prive_service::{GetPackagesResponse, PackageData};
+    use crate::services::{GetPackagesResponse, PackageData};
 
     info!("📦 Obteniendo paquetes para matricule: {}", request.matricule);
 
