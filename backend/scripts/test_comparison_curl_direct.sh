@@ -115,7 +115,9 @@ echo "📊 ========================================="
 echo ""
 
 echo "🔍 BACKEND RESPONSE:"
-if echo "$BACKEND_RESPONSE" | grep -q "401\|Unauthorized\|Authorization has been denied"; then
+if [ -z "$BACKEND_RESPONSE" ]; then
+    echo "   ❌ BACKEND: Sin respuesta (posible timeout o error)"
+elif echo "$BACKEND_RESPONSE" | grep -q "401\|Unauthorized\|Authorization has been denied"; then
     echo "   ❌ BACKEND: 401 Unauthorized"
 else
     echo "   ✅ BACKEND: Éxito"
@@ -126,8 +128,10 @@ echo ""
 echo "🔍 CURL DIRECTO RESPONSE:"
 if echo "$DIRECT_RESPONSE" | grep -q "401\|Unauthorized\|Authorization has been denied"; then
     echo "   ❌ CURL DIRECTO: 401 Unauthorized"
+elif echo "$DIRECT_RESPONSE" | grep -q "Index was outside the bounds"; then
+    echo "   ⚠️ CURL DIRECTO: Error de array bounds (pero autenticación OK)"
 else
-    echo "   ✅ CURL DIRECTO: Éxito"
+    echo "   ✅ CURL DIRECTO: Éxito completo"
 fi
 
 echo ""
