@@ -147,10 +147,27 @@ async fn authenticate_colis_prive_simple(
         anyhow::anyhow!("Error parseando respuesta: {}", e)
     })?;
     
-    // Extraer el token SsoHopps real
+    // 🔍 DEBUG: Imprimir todos los campos de la respuesta
+    log::info!("🔍 Campos disponibles en la respuesta:");
+    if let Some(obj) = auth_data.as_object() {
+        for (key, value) in obj {
+            log::info!("  - {}: {}", key, value);
+        }
+    }
+    
+    // 🔍 BUSCAR EL TOKEN EN DIFERENTES CAMPOS POSIBLES
     let sso_hopps = auth_data.get("SsoHopps")
+        .or_else(|| auth_data.get("ssoHopps"))
+        .or_else(|| auth_data.get("token"))
+        .or_else(|| auth_data.get("Token"))
+        .or_else(|| auth_data.get("access_token"))
+        .or_else(|| auth_data.get("accessToken"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Token SsoHopps no encontrado en la respuesta"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Token no encontrado en ningún campo. Campos disponibles: {:?}", 
+                auth_data.as_object().map(|obj| obj.keys().collect::<Vec<_>>()));
+            anyhow::anyhow!("Token no encontrado en la respuesta")
+        })?;
     
     log::info!("✅ Token SsoHopps obtenido exitosamente");
     
