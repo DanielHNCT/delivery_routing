@@ -135,7 +135,7 @@ async fn authenticate_colis_prive_simple(
         .header("Sec-Fetch-Mode", "cors")
         .header("Sec-Fetch-Site", "same-site")
         .header("Sec-GPC", "1")
-        .header("User-Agent", "curl/7.68.0")
+
         .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
         .header("sec-ch-ua-mobile", "?0")
         .header("sec-ch-ua-platform", "\"macOS\"")
@@ -277,7 +277,7 @@ pub async fn get_packages(
         .header("Sec-Fetch-Site", "same-site")
         .header("Sec-GPC", "1")
         .header("SsoHopps", sso_hopps)
-        .header("User-Agent", "curl/7.68.0")
+
         .header("sec-ch-ua", "\"Not;A=Brand\";v=\"99\", \"Brave\";v=\"139\", \"Chromium\";v=\"139\"")
         .header("sec-ch-ua-mobile", "?0")
         .header("sec-ch-ua-platform", "\"macOS\"")
@@ -422,7 +422,7 @@ pub async fn get_tournee_data(
     log::info!("   Origin: https://gestiontournee.colisprive.com");
     log::info!("   Referer: https://gestiontournee.colisprive.com/");
     log::info!("   SsoHopps: {}", sso_hopps);
-    log::info!("   User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+    log::info!("   User-Agent: curl/7.68.0");
     log::info!("   Sec-Fetch-Dest: empty");
     log::info!("   Sec-Fetch-Mode: cors");
     log::info!("   Sec-Fetch-Site: same-site");
@@ -445,7 +445,7 @@ pub async fn get_tournee_data(
         .header("Origin", "https://gestiontournee.colisprive.com")
         .header("Referer", "https://gestiontournee.colisprive.com/")
         .header("SsoHopps", &sso_hopps)  // 🆕 USAR TOKEN DEL ESTADO COMPARTIDO
-        .header("User-Agent", "curl/7.68.0")
+
         // 🔒 HEADERS DE SEGURIDAD CRÍTICOS - Agregados para compatibilidad con CURL funcional
         .header("Sec-Fetch-Dest", "empty")
         .header("Sec-Fetch-Mode", "cors") 
