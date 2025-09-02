@@ -52,6 +52,10 @@ pub struct AddressValidator {
     sector_mapping: HashMap<String, String>,
     street_regex: Regex,
     number_regex: Regex,
+    duplicate_number_regex: Regex,
+    district_in_middle_regex: Regex,
+    incomplete_address_regex: Regex,
+    separated_numbers_regex: Regex,
 }
 
 impl AddressValidator {
@@ -75,6 +79,18 @@ impl AddressValidator {
         
         // 🆕 REGEX para detectar números al final
         let number_regex = Regex::new(r"(.+?)\s+(\d+)\s*$").unwrap();
+        
+        // 🆕 REGEX para detectar números duplicados (ej: "35 35 RUE")
+        let duplicate_number_regex = Regex::new(r"(\d+)\s+\1\s+").unwrap();
+        
+        // 🆕 REGEX para detectar distrito en medio (ej: "18EME ARRONDISSEMENT")
+        let district_in_middle_regex = Regex::new(r"(?i)(\d+EME\s+ARRONDISSEMENT)").unwrap();
+        
+        // 🆕 REGEX para detectar direcciones incompletas (solo número y código postal)
+        let incomplete_address_regex = Regex::new(r"^(\d+),\s*(\d{5})\s+PARIS$").unwrap();
+        
+        // 🆕 REGEX para detectar números separados (ej: "6 7 IMP" -> tomar el último)
+        let separated_numbers_regex = Regex::new(r"(\d+)\s+(\d+)\s+").unwrap();
 
         Self {
             geocoding_service,
@@ -82,6 +98,10 @@ impl AddressValidator {
             sector_mapping,
             street_regex,
             number_regex,
+            duplicate_number_regex,
+            district_in_middle_regex,
+            incomplete_address_regex,
+            separated_numbers_regex,
         }
     }
 
@@ -93,8 +113,11 @@ impl AddressValidator {
     ) -> Result<ValidatedAddress> {
         log::info!("🔍 Validando dirección: '{}' para usuario: '{}'", address, username);
 
-        // 🎯 INTENTO 1: Dirección original
-        if let Ok(result) = self.geocoding_service.geocode_address(address).await {
+        // 🆕 PASO 0: Verificar si es una dirección incompleta
+        let (preprocessed_address, warnings) = self.handle_incomplete_address(address, username);
+        
+        // 🎯 INTENTO 1: Dirección original (o preprocesada)
+        if let Ok(result) = self.geocoding_service.geocode_address(&preprocessed_address).await {
             if self.is_valid_result(&result) {
                 log::info!("✅ Dirección original válida: {}", address);
                 return Ok(ValidatedAddress {
@@ -105,7 +128,7 @@ impl AddressValidator {
                     original_address: address.to_string(),
                     validation_method: ValidationMethod::Original,
                     confidence: ValidationConfidence::High,
-                    warnings: vec![],
+                    warnings,
                     error: None,
                 });
             }
@@ -276,11 +299,45 @@ impl AddressValidator {
     /// Limpiar dirección removiendo nombres de clientes comunes
     fn clean_address(&self, address: &str) -> String {
         let mut cleaned = address.to_uppercase();
+        let mut warnings = Vec::new();
         
         // 🆕 PASO 1: Detectar y corregir números al final
         cleaned = self.fix_number_at_end(&cleaned);
         
-        // 🆕 PASO 2: Usar regex para extraer solo la calle
+        // 🆕 PASO 2: Detectar y corregir números duplicados (ej: "35 35 RUE")
+        if let Some(captures) = self.duplicate_number_regex.captures(cleaned.as_str()) {
+            if let Some(first_number) = captures.get(1) {
+                let number = first_number.as_str().to_string();
+                let pattern = format!("{} {}", number, number);
+                cleaned = cleaned.replace(&pattern, &number);
+                warnings.push(format!("Números duplicados detectados y corregidos: {} {}", number, number));
+            }
+        }
+        
+        // 🆕 PASO 3: Detectar y corregir números separados (ej: "6 7 IMP" -> "7 IMP")
+        if let Some(captures) = self.separated_numbers_regex.captures(cleaned.as_str()) {
+            if let Some(first_num) = captures.get(1) {
+                if let Some(second_num) = captures.get(2) {
+                    let first = first_num.as_str().to_string();
+                    let second = second_num.as_str().to_string();
+                    // Tomar el último número (segundo)
+                    let pattern = format!("{} {}", first, second);
+                    cleaned = cleaned.replace(&pattern, &second);
+                    warnings.push(format!("Números separados detectados ({} {}), tomando el último: {}", first, second, second));
+                }
+            }
+        }
+        
+        // 🆕 PASO 4: Remover distrito del medio (ej: "18EME ARRONDISSEMENT")
+        if let Some(captures) = self.district_in_middle_regex.captures(cleaned.as_str()) {
+            if let Some(district) = captures.get(1) {
+                let district_str = district.as_str().to_string();
+                cleaned = cleaned.replace(&district_str, "");
+                warnings.push(format!("Distrito en medio removido: {}", district_str));
+            }
+        }
+        
+        // 🆕 PASO 5: Usar regex para extraer solo la calle
         if let Some(captures) = self.street_regex.captures(&cleaned) {
             if let Some(street_type) = captures.get(1) {
                 if let Some(street_name) = captures.get(2) {
@@ -307,7 +364,7 @@ impl AddressValidator {
             }
         }
         
-        // 🆕 PASO 3: Si no se pudo extraer con regex, usar método anterior
+        // 🆕 PASO 6: Si no se pudo extraer con regex, usar método anterior
         if cleaned == address.to_uppercase() {
             // Remover nombres comunes de clientes
             for name in &self.client_names {
@@ -417,6 +474,33 @@ impl AddressValidator {
         
         address.to_string()
     }
+
+    /// 🆕 Manejar direcciones incompletas (ej: "75, 75018 PARIS")
+    fn handle_incomplete_address(&self, address: &str, username: &str) -> (String, Vec<String>) {
+        let mut warnings = Vec::new();
+        
+        if let Some(captures) = self.incomplete_address_regex.captures(address) {
+            if let Some(number) = captures.get(1) {
+                if let Some(postal_code) = captures.get(2) {
+                    let num = number.as_str();
+                    let code = postal_code.as_str();
+                    
+                    // Extraer distrito del username para completar
+                    let district = self.extract_district_from_username(username);
+                    
+                    // Intentar completar con información del sector
+                    let completed = format!("{} RUE INCONNUE, {} PARIS", num, code);
+                    
+                    warnings.push(format!("Dirección incompleta detectada: '{}', completada con 'RUE INCONNUE'", address));
+                    warnings.push(format!("Usar información del sector: {}", district));
+                    
+                    return (completed, warnings);
+                }
+            }
+        }
+        
+        (address.to_string(), warnings)
+    }
 }
 
 #[cfg(test)]
@@ -485,5 +569,41 @@ mod tests {
         assert_eq!(validator.fix_number_at_end("Rue Jean Cottin 3"), "3 Rue Jean Cottin");
         assert_eq!(validator.fix_number_at_end("Avenue des Champs 25"), "25 Avenue des Champs");
         assert_eq!(validator.fix_number_at_end("15 Rue de la Paix"), "15 Rue de la Paix"); // No cambia
+    }
+
+    #[test]
+    fn test_handle_incomplete_address() {
+        let service = GeocodingService::new("test_token".to_string());
+        let validator = AddressValidator::new(service);
+        
+        // Test dirección incompleta
+        let (result, warnings) = validator.handle_incomplete_address("75, 75018 PARIS", "A187518");
+        assert!(result.contains("RUE INCONNUE"));
+        assert!(warnings.len() > 0);
+        assert!(warnings[0].contains("Dirección incompleta detectada"));
+    }
+
+    #[test]
+    fn test_clean_address_improvements() {
+        let service = GeocodingService::new("test_token".to_string());
+        let validator = AddressValidator::new(service);
+        
+        // Test números duplicados
+        assert_eq!(
+            validator.clean_address("35 35 RUE MARC SEGUIN"),
+            "35 RUE MARC SEGUIN"
+        );
+        
+        // Test números separados (tomar el último)
+        assert_eq!(
+            validator.clean_address("6 7 IMP. DU CURE"),
+            "7 IMP. DU CURE"
+        );
+        
+        // Test distrito en medio
+        assert_eq!(
+            validator.clean_address("16 RUE JEAN COTTIN 18EME ARRONDISSEMENT"),
+            "16 RUE JEAN COTTIN"
+        );
     }
 }
