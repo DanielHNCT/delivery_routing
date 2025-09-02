@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -12,14 +13,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.daniel.deliveryrouting.data.api.models.PackageData
+import android.util.Log
+
+private const val TAG_PACKAGES = "PackagesScreen"
 
 @Composable
 fun PackagesScreen(
     packages: List<PackageData>,
     isLoading: Boolean,
     onRefresh: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onMapClick: () -> Unit = {}
 ) {
+    Log.d(TAG_PACKAGES, "📦 PackagesScreen iniciado con ${packages.size} paquetes, isLoading: $isLoading")
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -38,9 +44,26 @@ fun PackagesScreen(
             )
             
             Row {
+                // 🗺️ Botón del mapa
+                IconButton(
+                    onClick = {
+                        Log.d(TAG_PACKAGES, "🗺️ Botón de mapa presionado - paquetes: ${packages.size}")
+                        onMapClick()
+                    },
+                    enabled = packages.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Ver Mapa"
+                    )
+                }
+                
                 // Botón de sincronizar
                 IconButton(
-                    onClick = onRefresh,
+                    onClick = {
+                        Log.d(TAG_PACKAGES, "🔄 Botón de sincronizar presionado")
+                        onRefresh()
+                    },
                     enabled = !isLoading
                 ) {
                     if (isLoading) {
@@ -57,7 +80,10 @@ fun PackagesScreen(
                 }
                 
                 // Botón de logout
-                TextButton(onClick = onLogout) {
+                TextButton(onClick = {
+                    Log.d(TAG_PACKAGES, "🚪 Botón de logout presionado")
+                    onLogout()
+                }) {
                     Text("Cerrar Sesión")
                 }
             }

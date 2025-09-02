@@ -25,7 +25,9 @@ data class PackageData(
     @SerializedName("instructions") val instructions: String = "",
     @SerializedName("phone") val phone: String? = null,
     @SerializedName("delivery_date") val deliveryDate: String? = null,
-    @SerializedName("priority") val priority: String = "Normal"
+    @SerializedName("priority") val priority: String = "Normal",
+    @SerializedName("latitude") val latitude: Double? = null,
+    @SerializedName("longitude") val longitude: Double? = null
 )
 
 // Modelo para actualizar estado de paquete

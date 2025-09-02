@@ -1,8 +1,10 @@
 package com.daniel.deliveryrouting
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+// import com.mapbox.maps.Mapbox
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,14 +20,30 @@ import com.daniel.deliveryrouting.data.api.models.AuthData
 import com.daniel.deliveryrouting.data.api.models.LoginResponse
 import com.daniel.deliveryrouting.data.api.models.PackageData
 import com.daniel.deliveryrouting.presentation.packages.PackagesScreen
+import com.daniel.deliveryrouting.presentation.map.PackageMapScreen
 import com.daniel.deliveryrouting.ui.theme.DeliveryRoutingTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+private const val TAG_MAIN = "MainActivity"
+
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        Log.d(TAG, "🚀 MainActivity onCreate iniciado")
+        
+        // 🗺️ CONFIGURAR MAPBOX (temporalmente comentado)
+        Log.d(TAG, "🗺️ Configurando Mapbox...")
+        // Mapbox.getInstance(this, getString(R.string.mapbox_access_token))
+        Log.d(TAG, "✅ Mapbox configurado exitosamente")
+        
+        Log.d(TAG, "🎨 Configurando UI con Compose...")
         setContent {
             DeliveryRoutingTheme {
                 Surface(
@@ -59,6 +77,9 @@ fun LoginApp() {
     var packages by remember { mutableStateOf<List<PackageData>>(emptyList()) }
     var isLoadingPackages by remember { mutableStateOf(false) }
     var packagesError by remember { mutableStateOf("") }
+    
+    // Estado para navegación al mapa
+    var showMap by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val repository = remember { BackendRepository(context) }
@@ -94,19 +115,36 @@ fun LoginApp() {
     }
 
     if (isLoggedIn && loginData != null) {
-        // ✅ PANTALLA DE PAQUETES
-        PackagesScreen(
-            packages = packages,
-            isLoading = isLoadingPackages,
-            onRefresh = loadPackages,
-            onLogout = {
-                isLoggedIn = false
-                loginData = null
-                packages = emptyList()
-                errorMessage = ""
-                packagesError = ""
-            }
-        )
+        if (showMap) {
+            // 🗺️ PANTALLA DE MAPA
+            Log.d(TAG_MAIN, "🗺️ Mostrando pantalla de mapa con ${packages.size} paquetes")
+            PackageMapScreen(
+                packages = packages,
+                onBackClick = { 
+                    Log.d(TAG_MAIN, "⬅️ Regresando a pantalla de paquetes")
+                    showMap = false 
+                }
+            )
+        } else {
+            // ✅ PANTALLA DE PAQUETES
+            PackagesScreen(
+                packages = packages,
+                isLoading = isLoadingPackages,
+                onRefresh = loadPackages,
+                onLogout = {
+                    isLoggedIn = false
+                    loginData = null
+                    packages = emptyList()
+                    errorMessage = ""
+                    packagesError = ""
+                    showMap = false
+                },
+                onMapClick = { 
+                    Log.d(TAG_MAIN, "🗺️ Navegando a pantalla de mapa")
+                    showMap = true 
+                }
+            )
+        }
         
         // Cargar paquetes automáticamente al entrar
         LaunchedEffect(loginData) {

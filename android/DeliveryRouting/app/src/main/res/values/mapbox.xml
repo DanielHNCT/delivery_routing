@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 🗺️ MAPBOX CONFIGURATION -->
+    <!-- 
+    IMPORTANTE: 
+    1. Ve a https://account.mapbox.com/access-tokens/
+    2. Crea una cuenta gratuita
+    3. Copia tu token público (pk.xxx)
+    4. Reemplaza "TU_TOKEN_AQUI" con tu token real
+    -->
+    <string name="mapbox_access_token">pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og</string>
+</resources>

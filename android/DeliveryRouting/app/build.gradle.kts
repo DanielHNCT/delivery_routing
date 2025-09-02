@@ -85,6 +85,9 @@ dependencies {
     // Accompanist for Compose SwipeRefresh
     implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
     
+    // 🗺️ MAPBOX SDK (incluye annotations)
+    implementation("com.mapbox.maps:android:11.14.3")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
