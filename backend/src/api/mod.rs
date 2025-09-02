@@ -5,6 +5,7 @@
 
 pub mod colis_prive;
 pub mod colis_prive_router;
+pub mod geocoding;
 
 pub use colis_prive_router::*;
 
@@ -15,4 +16,5 @@ use crate::state::AppState;
 pub fn create_api_router() -> Router<AppState> {
     Router::new()
         .nest("/colis-prive", create_colis_prive_router())
+        .nest("/api", geocoding::create_geocoding_router())
 }

@@ -69,3 +69,9 @@ async-trait = "0.1"
 # Métricas y monitoreo
 prometheus = "0.13"
 prometheus-client = "0.22"
+
+# URL encoding para geocoding
+urlencoding = "2.1"
+
+# Futures para operaciones asíncronas
+futures = "0.3"

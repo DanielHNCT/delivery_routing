@@ -15,6 +15,7 @@ pub struct EnvironmentConfig {
     pub cors_origins: Vec<String>,
     pub rate_limit_requests: u32,
     pub rate_limit_window: u64,
+    pub mapbox_token: Option<String>,
 }
 
 impl Default for EnvironmentConfig {
@@ -44,6 +45,7 @@ impl Default for EnvironmentConfig {
                 .unwrap_or_else(|_| "3600".to_string())
                 .parse()
                 .unwrap_or(3600),
+            mapbox_token: env::var("MAPBOX_TOKEN").ok(),
         }
     }
 }
