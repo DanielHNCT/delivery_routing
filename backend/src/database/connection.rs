@@ -66,8 +66,8 @@ mod tests {
         // Keeping it for now as it might be re-introduced or refactored later.
         // For now, it will always pass as the default is hardcoded.
         let config = sqlx::postgres::PgPoolOptions::default(); // This line is just for compilation, not actual test
-        assert!(!config.max_connections.is_zero());
-        assert!(!config.min_connections.is_zero());
+        assert!(!config.max_connections().is_zero());
+        assert!(!config.min_connections().is_zero());
     }
 
     #[test]

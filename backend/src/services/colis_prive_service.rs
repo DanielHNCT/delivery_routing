@@ -49,6 +49,12 @@ pub struct PackageData {
     pub instructions: String,
     pub phone: String,
     pub priority: String,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub formatted_address: Option<String>,
+    pub validation_method: Option<String>,
+    pub validation_confidence: Option<String>,
+    pub validation_warnings: Option<Vec<String>>,
 }
 
 /// Datos de error
@@ -65,4 +71,17 @@ pub struct GetPackagesResponse {
     pub message: String,
     pub packages: Option<Vec<PackageData>>,
     pub error: Option<ErrorData>,
+    pub address_validation: Option<AddressValidationSummary>,
+}
+
+/// Resumen de validación de direcciones
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressValidationSummary {
+    pub total_packages: usize,
+    pub auto_validated: usize,
+    pub cleaned_auto: usize,
+    pub completed_auto: usize,
+    pub partial_found: usize,
+    pub requires_manual: usize,
+    pub warnings: Vec<String>,
 }

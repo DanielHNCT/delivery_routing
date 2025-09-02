@@ -10,7 +10,6 @@ use axum::{
 };
 use serde_json::json;
 use log;
-use reqwest;
 use crate::{
     state::AppState,
     services::colis_prive_service::{ColisPriveAuthRequest, GetTourneeRequest, GetPackagesRequest, ColisPriveAuthResponse},
@@ -102,8 +101,6 @@ async fn authenticate_colis_prive_simple(
     }
     
     // 🔧 IMPLEMENTACIÓN REAL: Autenticación directa con Colis Privé
-    let login_field = format!("{}_{}", credentials.societe, credentials.username);
-    
     let auth_url = "https://wsauthentificationexterne.colisprive.com/api/auth/login/Membership";
     let login_field = format!("{}_{}", credentials.societe, credentials.username);
     let auth_payload = json!({
@@ -218,7 +215,7 @@ pub async fn get_packages(
     State(state): State<AppState>,
     Json(request): Json<GetPackagesRequest>,
 ) -> Result<Json<crate::services::GetPackagesResponse>, StatusCode> {
-    use tracing::{info, error};
+    use tracing::info;
     use crate::services::{GetPackagesResponse, PackageData};
 
     log::info!("🔥 FUNCIÓN GET_PACKAGES INICIADA");
@@ -324,6 +321,12 @@ pub async fn get_packages(
                             instructions: package.get("PreferenceLivraison")?.as_str()?.to_string(),
                             phone: package.get("telephoneMobileDestinataire")?.as_str()?.to_string(),
                             priority: package.get("priorite")?.as_u64()?.to_string(),
+                            latitude: None,
+                            longitude: None,
+                            formatted_address: None,
+                            validation_method: None,
+                            validation_confidence: None,
+                            validation_warnings: None,
                         })
                     } else {
                         None
@@ -350,15 +353,86 @@ pub async fn get_packages(
                 message: format!("Tournée {} completada - No hay paquetes pendientes", code_tournee),
                 packages: None,
                 error: None,
+                address_validation: None,
             }));
         }
     }
 
+    // 🆕 VALIDACIÓN INTELIGENTE DE DIRECCIONES
+    log::info!("🔍 Iniciando validación inteligente de direcciones para {} paquetes", packages.len());
+    
+    let mut validated_packages = Vec::new();
+    let mut validation_summary = crate::services::AddressValidationSummary {
+        total_packages: packages.len(),
+        auto_validated: 0,
+        cleaned_auto: 0,
+        completed_auto: 0,
+        partial_found: 0,
+        requires_manual: 0,
+        warnings: Vec::new(),
+    };
+
+    // Crear el validador de direcciones
+    if let Some(mapbox_token) = &state.config.mapbox_token {
+        let geocoding_service = crate::services::GeocodingService::new(mapbox_token.clone());
+        let address_validator = crate::services::AddressValidator::new(geocoding_service);
+        
+        // Validar cada paquete
+        for mut package in packages {
+            match address_validator.validate_address(&package.address, &request.matricule).await {
+                Ok(validated) => {
+                    // Actualizar el paquete con la información de validación
+                    package.latitude = validated.latitude;
+                    package.longitude = validated.longitude;
+                    package.formatted_address = validated.formatted_address;
+                    package.validation_method = Some(format!("{:?}", validated.validation_method));
+                    package.validation_confidence = Some(format!("{:?}", validated.confidence));
+                    package.validation_warnings = Some(validated.warnings.clone());
+                    
+                    // Actualizar estadísticas
+                    match validated.validation_method {
+                        crate::services::ValidationMethod::Original => validation_summary.auto_validated += 1,
+                        crate::services::ValidationMethod::Cleaned => validation_summary.cleaned_auto += 1,
+                        crate::services::ValidationMethod::CompletedWithSector => validation_summary.completed_auto += 1,
+                        crate::services::ValidationMethod::PartialSearch => validation_summary.partial_found += 1,
+                        crate::services::ValidationMethod::ManualRequired => validation_summary.requires_manual += 1,
+                    }
+                    
+                    // Agregar warnings al resumen
+                    validation_summary.warnings.extend(validated.warnings);
+                    
+                    validated_packages.push(package);
+                }
+                Err(e) => {
+                    log::error!("❌ Error validando dirección '{}': {}", package.address, e);
+                    validation_summary.requires_manual += 1;
+                    package.validation_method = Some("ManualRequired".to_string());
+                    package.validation_confidence = Some("None".to_string());
+                    package.validation_warnings = Some(vec![format!("Error de validación: {}", e)]);
+                    validated_packages.push(package);
+                }
+            }
+        }
+        
+        log::info!("✅ Validación completada: {} auto-validados, {} limpiados, {} completados, {} parciales, {} manuales", 
+            validation_summary.auto_validated, 
+            validation_summary.cleaned_auto, 
+            validation_summary.completed_auto, 
+            validation_summary.partial_found, 
+            validation_summary.requires_manual
+        );
+    } else {
+        log::warn!("⚠️ MAPBOX_TOKEN no configurado, saltando validación de direcciones");
+        validation_summary.requires_manual = packages.len();
+        validated_packages = packages;
+    }
+
     Ok(Json(GetPackagesResponse {
         success: true,
-        message: format!("Paquetes obtenidos exitosamente - {} paquetes", packages.len()),
-        packages: Some(packages),
+        message: format!("Paquetes obtenidos y validados exitosamente - {} paquetes", validated_packages.len()),
+        packages: Some(validated_packages),
         error: None,
+        address_validation: Some(validation_summary),
     }))
 }
 
@@ -463,7 +537,7 @@ pub async fn get_tournee_data(
     // 🔧 PASO 3: Decodificar base64 si es necesario
     let decoded_data = if tournee_text.starts_with('"') && tournee_text.ends_with('"') {
         let base64_content = &tournee_text[1..tournee_text.len()-1];
-        match base64::decode(base64_content) {
+        match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_content) {
             Ok(decoded) => {
                 log::info!("✅ Datos decodificados de base64: {} bytes", decoded.len());
                 String::from_utf8(decoded).unwrap_or(tournee_text)
@@ -512,7 +586,6 @@ pub async fn health_check() -> Json<serde_json::Value> {
 /// GET /api/colis-prive/health - Health check de Colis Privé
 pub async fn health_check_colis_prive() -> Result<Json<serde_json::Value>, StatusCode> {
     use tracing::info;
-    use crate::services::PackageData;
     
     info!(
         endpoint = "health_check",

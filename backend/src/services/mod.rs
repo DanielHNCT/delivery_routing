@@ -10,6 +10,7 @@ pub mod colis_prive_service;
 // pub mod colis_prive_complete_flow_service; // Comentado temporalmente por errores de compilación
 pub mod colis_prive_web_service;
 pub mod geocoding_service;
+pub mod address_validation;
 
 pub use colis_prive_service::*;
 // pub use app_version_service::*; // Comentado temporalmente
@@ -17,3 +18,4 @@ pub use colis_prive_service::*;
 // pub use colis_prive_complete_flow_service::*; // Comentado temporalmente
 pub use colis_prive_web_service::*;
 pub use geocoding_service::*;
+pub use address_validation::*;
