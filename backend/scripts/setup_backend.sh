@@ -6,7 +6,7 @@
 echo "🔧 Configurando backend automáticamente..."
 
 # Token de Mapbox extraído del código Android
-MAPBOX_TOKEN="pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og"
+MAPBOX_TOKEN="YOUR_MAPBOX_TOKEN_HERE"
 
 # Configurar variables de entorno
 echo "📝 Configurando variables de entorno..."

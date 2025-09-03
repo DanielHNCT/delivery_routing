@@ -10,7 +10,7 @@ PI_HOST="${PI_HOST:-192.168.1.100}"  # Cambia por la IP de tu Pi
 PI_USER="${PI_USER:-pi}"             # Cambia por tu usuario
 
 # Token de Mapbox extraído del código Android
-MAPBOX_TOKEN="pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og"
+MAPBOX_TOKEN="YOUR_MAPBOX_TOKEN_HERE"
 
 echo "📡 Conectando a $PI_USER@$PI_HOST..."
 

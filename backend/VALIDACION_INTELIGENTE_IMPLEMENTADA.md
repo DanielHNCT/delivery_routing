@@ -142,7 +142,7 @@ curl -X POST http://192.168.1.9:3000/api/colis-prive/packages \
 
 ### **Variables de Entorno**
 ```bash
-MAPBOX_TOKEN=pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og
+MAPBOX_TOKEN=YOUR_MAPBOX_TOKEN_HERE
 ```
 
 ### **Dependencias**

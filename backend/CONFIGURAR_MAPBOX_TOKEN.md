@@ -7,7 +7,7 @@ El token de Mapbox debe ser extraído del código Android y configurado en el Ra
 El token se encuentra en: `android/DeliveryRouting/app/src/main/res/values/mapbox.xml`
 
 ```xml
-<string name="mapbox_access_token">pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og</string>
+<string name="mapbox_access_token">YOUR_MAPBOX_TOKEN_HERE</string>
 ```
 
 ## 🚀 Opciones de Configuración
@@ -15,7 +15,7 @@ El token se encuentra en: `android/DeliveryRouting/app/src/main/res/values/mapbo
 ### Opción 1: Configuración Manual en el Pi
 ```bash
 # En el Raspberry Pi, primero configurar el token:
-export MAPBOX_TOKEN="pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og"
+export MAPBOX_TOKEN="YOUR_MAPBOX_TOKEN_HERE"
 
 # Luego ejecutar el script:
 cd /home/pi/delivery_routing/backend
@@ -25,7 +25,7 @@ cd /home/pi/delivery_routing/backend
 ### Opción 2: Configuración Remota (desde tu máquina)
 ```bash
 # Desde tu máquina local, primero configurar el token:
-export MAPBOX_TOKEN="pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og"
+export MAPBOX_TOKEN="YOUR_MAPBOX_TOKEN_HERE"
 
 # Luego ejecutar el script:
 cd backend
@@ -35,7 +35,7 @@ cd backend
 ### Opción 3: Configuración Manual Simple
 ```bash
 # En el Pi, configurar la variable de entorno:
-export MAPBOX_TOKEN="pk.eyJ1IjoiZGFuaWVsaG5jdCIsImEiOiJjbThuY2w2b3kwYnVwMmxxemIzbmMxZG8wIn0.SAaCMIDxHKjlK_avG-i6og"
+export MAPBOX_TOKEN="YOUR_MAPBOX_TOKEN_HERE"
 
 # Reiniciar el servicio:
 sudo systemctl restart delivery-optimizer
